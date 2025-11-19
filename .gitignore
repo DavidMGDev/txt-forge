@@ -1,0 +1,391 @@
+# Generated .gitignore for txt-forge development
+# This includes ignore patterns for all supported technologies
+
+# OS Files & Metadata
+ehthumbs.db
+Desktop.ini
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+.TemporaryItems
+Thumbs.db.lock
+.fseventsd
+.fuse_hidden*
+.directory
+.netrc
+
+# Editor Configuration
+.sublime-project
+.sublime-workspace
+.atom/
+.nova/
+.editorconfig
+.c9/
+
+# Security Files
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+*.cert
+*.crt
+*.der
+secrets/
+private/
+credentials/
+
+# Temporary & Backup Files
+*.bak
+*.tmp
+*.backup
+backup/
+.backup/
+*.orig
+
+# Miscellaneous
+.directory
+.netrc
+
+# Node.js / JavaScript
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+.env
+.env.local
+dist/
+build/
+.svelte-kit/
+
+# TypeScript
+*.tsbuildinfo
+.tsc/
+out/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.coverage
+
+# Java
+*.class
+*.jar
+*.war
+*.ear
+target/
+.gradle/
+build/
+.idea/
+*.iml
+out/
+*.log
+
+# C#
+bin/
+obj/
+*.suo
+*.user
+.vs/
+.vscode/
+*.userprefs
+packages/
+*.nupkg
+project.lock.json
+
+# C++
+*.o
+*.obj
+*.exe
+*.out
+*.app
+*.a
+*.so
+*.dylib
+Debug/
+Release/
+x64/
+x86/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# Go
+*.exe
+*.dll
+*.so
+*.dylib
+vendor/
+
+# Rust
+target/
+Cargo.lock
+
+# PHP
+/vendor/
+composer.lock
+.env
+
+# Kotlin
+*.class
+build/
+.idea/
+*.iml
+out/
+
+# Swift
+xcuserdata/
+*.xcuserstate
+build/
+*.ipa
+.build/
+.swiftpm/
+
+# Ruby
+*.gem
+.bundle
+vendor/bundle
+.rvmrc
+.ruby-version
+Gemfile.lock
+.byebug_history
+tmp/
+
+# Shell
+*.swp
+*.swo
+*~
+.bash_history
+.zsh_history
+
+# C
+*.o
+*.obj
+*.a
+*.exe
+*.out
+*.so
+*.dylib
+
+# R
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+
+# Scala
+target/
+.idea/
+*.class
+*.jar
+
+# Perl
+*.perlcritic
+cover_db/
+*.o
+blib/
+
+# Dart
+.dart_tool/
+.pub-cache/
+.pub/
+build/
+
+# Elixir
+_build/
+deps/
+.fetch
+erl_crash.dump
+*.ez
+*.beam
+
+# Lua
+*.luac
+
+# Assembly
+*.o
+*.obj
+*.exe
+*.bin
+*.hex
+
+# Groovy
+*.class
+build/
+
+# Visual Basic .NET
+bin/
+obj/
+
+# React/Next.js/Vue/etc
+.next/
+.nuxt/
+.solid/
+.astro/
+.qwik/
+.output/
+.vercel
+
+# NestJS/Fastify/Koa
+coverage/
+.nyc_output/
+
+# Hapi.js
+.nyc_output/
+
+# Meteor.js
+.meteor/local/
+.meteor/dev_bundle/
+
+# Laravel
+/vendor/
+bootstrap/cache/
+
+# Godot 4
+.godot/
+.mono/
+export/
+*.import
+*.generated
+user_data/
+.DS_Store
+Thumbs.db
+*.log
+.cache/
+*.swp
+*.swo
+*~
+
+# Testing and Coverage
+coverage/
+.nyc_output/
+.coverage
+.pytest_cache/
+
+# Logs
+*.log
+logs/
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+lib-cov
+
+# Grunt intermediate storage
+.grunt
+
+# Bower dependency directory
+bower_components
+
+# node-waf configuration
+.lock-wscript
+
+# Compiled binary addons
+build/Release
+
+# Dependency directories
+jspm_packages/
+
+# Optional npm cache directory
+.npm
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# dotenv environment variables file
+.env
+
+# IDEs and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Build outputs and artifacts
+build/
+dist/
+out/
+target/
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+*.lib
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+*.sqlitedb
+
+# Backup files
+*.backup
+*.bak
+*.orig
+*.old
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Lock files (except package-lock.json for publishing)
+yarn.lock
+pnpm-lock.yaml
+Pipfile.lock
+poetry.lock
+
+# Local development
+.local
+.dev

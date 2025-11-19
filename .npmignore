@@ -1,0 +1,8 @@
+node_modules
+src
+static
+.svelte-kit
+vite.config.ts
+tailwind.config.js
+tsconfig.json
+.gitignore

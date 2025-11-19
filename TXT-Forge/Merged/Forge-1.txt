@@ -1,0 +1,1699 @@
+--- INDEX ---
+bin\cli.js
+postcss.config.js
+src\app.d.ts
+src\lib\index.ts
+src\lib\processor.ts
+src\lib\templates.ts
+src\routes\+layout.svelte
+src\routes\+page.svelte
+src\routes\api\detect\+server.ts
+src\routes\api\forge\+server.ts
+src\routes\api\open\+server.ts
+svelte.config.js
+tailwind.config.js
+test-project\app.js
+vite.config.ts
+------------------------------
+
+
+==================================================
+File: bin\cli.js
+==================================================
+
+#!/usr/bin/env node
+
+import { spawn } from 'child_process';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import open from 'open';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// Path to the SvelteKit server build
+const serverPath = path.join(__dirname, '../build/index.js');
+
+// Pass the user's current working directory to the server env
+const USER_CWD = process.cwd();
+const PORT = 4567; // Unique port for txt-forge
+
+console.log('\x1b[36m%s\x1b[0m', '🔥 TXT-FORGE is heating up...');
+
+const server = spawn('node', [serverPath], {
+    env: {
+        ...process.env,
+        PORT: PORT.toString(),
+        TXT_FORGE_CWD: USER_CWD, // Vital: pass the directory where command was run
+        ORIGIN: `http://localhost:${PORT}`
+    },
+    stdio: 'inherit'
+});
+
+setTimeout(async () => {
+    const url = `http://localhost:${PORT}`;
+    console.log('\x1b[32m%s\x1b[0m', `✓ Forge ready at ${url}`);
+    await open(url);
+}, 1500);
+
+process.on('SIGINT', () => {
+    server.kill();
+    process.exit();
+});
+
+
+
+==================================================
+File: postcss.config.js
+==================================================
+
+export default {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+}
+
+
+
+==================================================
+File: src\app.d.ts
+==================================================
+
+// See https://svelte.dev/docs/kit/types#app.d.ts
+// for information about these interfaces
+declare global {
+	namespace App {
+		// interface Error {}
+		// interface Locals {}
+		// interface PageData {}
+		// interface PageState {}
+		// interface Platform {}
+	}
+}
+
+export {};
+
+
+
+==================================================
+File: src\lib\index.ts
+==================================================
+
+// place files you want to import through the `$lib` alias in this folder.
+
+
+
+==================================================
+File: src\lib\processor.ts
+==================================================
+
+import fs from 'fs/promises';
+import path from 'path';
+import os from 'os';
+import { templates, type CodebaseTemplate } from '$lib/templates';
+
+export type SaveMode = 'root' | 'global' | 'custom';
+
+export interface ProcessConfig {
+    sourceDir: string;
+    saveMode: SaveMode;
+    customPath?: string;
+    templateIds: string[]; // Changed from extensions string[]
+    maxChars: number;
+}
+
+interface ProcessResult {
+    success: boolean;
+    message: string;
+    outputPath: string;
+    files: string[];
+}
+
+// Regex to find safe places to split code (functions, classes, etc.)
+const SAFE_SPLIT_REGEX = /\n(?=(function|class|export|interface|type|def|func|const|let|var|public|private|protected|struct|impl|package|import)\s)/g;
+
+// --- PUBLIC API ---
+
+/**
+ * 1. Detect Codebase
+ * Scans the root directory and returns templates that match "trigger" files.
+ */
+export async function detectCodebase(sourceDir: string): Promise<string[]> {
+    try {
+        const files = await fs.readdir(sourceDir);
+        const detectedIds = new Set<string>();
+
+        // 1. Check triggers (e.g., package.json, go.mod)
+        for (const t of templates) {
+            // Check exact match or extension match in root
+            const hasTrigger = t.triggers.some(trigger => {
+                if (trigger.startsWith('*')) {
+                    const ext = trigger.slice(1);
+                    return files.some(f => f.endsWith(ext));
+                }
+                return files.includes(trigger);
+            });
+
+            if (hasTrigger) detectedIds.add(t.id);
+        }
+
+        // 2. Smart Association Rules
+        // If React/Vue/Svelte/Next/etc are present, ensure HTML/CSS and TS/JS are included
+        const webFrameworks = ['react', 'vuejs', 'sveltekit', 'nextjs', 'astro', 'remix', 'angular', 'solidjs', 'qwik'];
+        const hasWeb = Array.from(detectedIds).some(id => webFrameworks.includes(id));
+
+        if (hasWeb) {
+            if (!detectedIds.has('typescript')) detectedIds.add('typescript');
+            if (!detectedIds.has('javascript')) detectedIds.add('javascript');
+            if (!detectedIds.has('html-css')) detectedIds.add('html-css');
+        }
+
+        return Array.from(detectedIds);
+    } catch (e) {
+        console.error("Detection failed", e);
+        return [];
+    }
+}
+
+/**
+ * 2. Process Files
+ * Main execution function.
+ */
+export async function processFiles(config: ProcessConfig): Promise<ProcessResult> {
+    try {
+        const sourceRoot = path.resolve(config.sourceDir);
+        const projectName = path.basename(sourceRoot);
+
+        // Resolve Templates
+        const activeTemplates = templates.filter(t => config.templateIds.includes(t.id));
+        if (activeTemplates.length === 0) throw new Error("No templates selected.");
+
+        // Aggregate extensions and ignores
+        const validExtensions = new Set<string>();
+        const ignorePatterns = new Set<string>(['.git', 'node_modules', 'TXT-Forge', '.txt-forge-vault']);
+
+        activeTemplates.forEach(t => {
+            t.extensions.forEach(ext => validExtensions.add(ext));
+            t.ignores.forEach(ign => ignorePatterns.add(ign.replace(/\/$/, ''))); // Remove trailing slashes for comparison
+        });
+
+        // Determine Output Path
+        let outputBaseDir = '';
+        if (config.saveMode === 'root') outputBaseDir = path.join(sourceRoot, 'TXT-Forge');
+        else if (config.saveMode === 'global') outputBaseDir = path.join(os.homedir(), '.txt-forge-vault', projectName);
+        else if (config.saveMode === 'custom' && config.customPath) outputBaseDir = path.resolve(config.customPath);
+        else throw new Error("Invalid save path configuration.");
+
+        const txtsDir = path.join(outputBaseDir, 'Raw_TXTs');
+        const mergedDir = path.join(outputBaseDir, 'Merged');
+
+        // Cleanup & Setup
+        await cleanDirectory(txtsDir);
+        await cleanDirectory(mergedDir);
+
+        // Scan
+        const foundFiles = await scanFiles(sourceRoot, sourceRoot, Array.from(validExtensions), Array.from(ignorePatterns));
+        if (foundFiles.length === 0) return { success: false, message: "No matching files found.", outputPath: '', files: [] };
+
+        // Copy & Map
+        const fileMap: { original: string, relPath: string, content: string }[] = [];
+
+        for (const filePath of foundFiles) {
+            try {
+                const content = await fs.readFile(filePath, 'utf-8');
+                const relPath = path.relative(sourceRoot, filePath);
+                fileMap.push({ original: filePath, relPath, content });
+            } catch (e) {
+                console.warn(`Skipping binary or unreadable file: ${filePath}`);
+            }
+        }
+
+        // Merge with Smart Splitting
+        const generatedFiles = await mergeFiles(fileMap, mergedDir, config.maxChars);
+
+        return {
+            success: true,
+            message: "Processing Complete",
+            outputPath: mergedDir,
+            files: generatedFiles
+        };
+
+    } catch (error: any) {
+        return { success: false, message: error.message || "Unknown Error", outputPath: '', files: [] };
+    }
+}
+
+// --- INTERNAL HELPERS ---
+
+async function cleanDirectory(dir: string) {
+    try {
+        await fs.rm(dir, { recursive: true, force: true });
+        await fs.mkdir(dir, { recursive: true });
+    } catch (e) {}
+}
+
+async function scanFiles(rootDir: string, currentDir: string, extensions: string[], ignores: string[]): Promise<string[]> {
+    let results: string[] = [];
+    const list = await fs.readdir(currentDir, { withFileTypes: true });
+
+    for (const entry of list) {
+        const fullPath = path.join(currentDir, entry.name);
+        const relPath = path.relative(rootDir, fullPath);
+
+        // Check Ignores (Simple match against parts of the path)
+        // Logic: If any part of the path matches an ignore pattern
+        const pathParts = relPath.split(path.sep);
+        const isIgnored = pathParts.some(part =>
+            ignores.some(ign => {
+                if (ign.startsWith('*')) return part.endsWith(ign.slice(1));
+                return part === ign || part.toLowerCase() === ign.toLowerCase();
+            })
+        );
+
+        if (isIgnored) continue;
+
+        if (entry.isDirectory()) {
+            results = results.concat(await scanFiles(rootDir, fullPath, extensions, ignores));
+        } else {
+            const ext = path.extname(entry.name);
+            if (extensions.includes(ext)) {
+                results.push(fullPath);
+            }
+        }
+    }
+    return results;
+}
+
+async function mergeFiles(
+    files: { relPath: string, content: string }[],
+    outputDir: string,
+    maxChars: number
+): Promise<string[]> {
+
+    const createdFiles: string[] = [];
+    let buffer = "";
+    let bufferIndex: string[] = [];
+    let fileIndex = 1;
+
+    const flushBuffer = async () => {
+        if (!buffer) return;
+        const indexHeader = "--- INDEX ---\n" + bufferIndex.join('\n') + "\n" + "-".repeat(30) + "\n\n";
+        const filename = `Forge-${fileIndex}.txt`;
+        await fs.writeFile(path.join(outputDir, filename), indexHeader + buffer, 'utf-8');
+        createdFiles.push(filename);
+        buffer = "";
+        bufferIndex = [];
+        fileIndex++;
+    };
+
+    for (const file of files) {
+        const fileHeader = `\n${'='.repeat(50)}\nFile: ${file.relPath}\n${'='.repeat(50)}\n\n`;
+        const fullEntry = fileHeader + file.content + "\n\n";
+
+        // --- LOGIC 1: File is bigger than maxChars alone? ---
+        if (fullEntry.length > maxChars) {
+            // Write whatever is in buffer first
+            await flushBuffer();
+
+            // Split this specific file
+            let remaining = file.content;
+            let part = 1;
+
+            // Calculate how many parts roughly
+            const totalParts = Math.ceil(remaining.length / (maxChars - 500));
+
+            while (remaining.length > 0) {
+                const header = `\n${'='.repeat(50)}\nFile: ${file.relPath} (Part ${part}/${totalParts})\n${'='.repeat(50)}\n\n`;
+                const availableSpace = maxChars - header.length;
+
+                if (remaining.length <= availableSpace) {
+                    buffer = header + remaining + "\n\n";
+                    bufferIndex.push(`${file.relPath} (Part ${part}/${totalParts})`);
+                    await flushBuffer();
+                    remaining = "";
+                } else {
+                    // Smart Split
+                    let splitIdx = -1;
+                    const searchWindow = remaining.substring(0, availableSpace);
+
+                    let match;
+                    // Reset regex
+                    SAFE_SPLIT_REGEX.lastIndex = 0;
+                    while ((match = SAFE_SPLIT_REGEX.exec(searchWindow)) !== null) {
+                        splitIdx = match.index;
+                    }
+
+                    if (splitIdx === -1) splitIdx = searchWindow.lastIndexOf('\n'); // Fallback to newline
+                    if (splitIdx === -1) splitIdx = availableSpace; // Hard split
+
+                    buffer = header + remaining.substring(0, splitIdx) + "\n\n";
+                    bufferIndex.push(`${file.relPath} (Part ${part}/${totalParts})`);
+                    await flushBuffer();
+
+                    remaining = remaining.substring(splitIdx);
+                    part++;
+                }
+            }
+            continue;
+        }
+
+        // --- LOGIC 2: Append to buffer ---
+        if ((buffer.length + fullEntry.length) > maxChars) {
+            await flushBuffer();
+        }
+
+        buffer += fullEntry;
+        bufferIndex.push(file.relPath);
+    }
+
+    await flushBuffer();
+    return createdFiles;
+}
+
+
+
+==================================================
+File: src\lib\templates.ts
+==================================================
+
+export interface CodebaseTemplate {
+  id: string;
+  name: string;
+  extensions: string[];
+  ignores: string[];
+  iconUrl: string;
+  triggers: string[];
+}
+
+export const templates: CodebaseTemplate[] = [
+  {
+    id: "typescript",
+    name: "TypeScript",
+    extensions: [".ts", ".tsx", ".d.ts", ".mts", ".cts"],
+    ignores: ["*.tsbuildinfo", "dist/", "build/", ".tsc/", "out/"],
+    iconUrl:
+      "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/typescript.svg",
+    triggers: ["tsconfig.json", "package.json"],
+  },
+  {
+    id: "python",
+    name: "Python",
+    extensions: [
+      ".py",
+      ".pyc",
+      ".pyo",
+      ".pyd",
+      ".pyw",
+      ".pyz",
+      ".pyi",
+      ".pyx",
+    ],
+    ignores: [
+      "__pycache__/",
+      "*.py[cod]",
+      "*$py.class",
+      "*.so",
+      ".Python",
+      "env/",
+      "venv/",
+      ".venv",
+      "build/",
+      "develop-eggs/",
+      "dist/",
+      "downloads/",
+      "eggs/",
+      ".eggs/",
+      "lib/",
+      "lib64/",
+      "parts/",
+      "sdist/",
+      "var/",
+      "wheels/",
+      "*.egg-info/",
+      ".installed.cfg",
+      "*.egg",
+      "pip-log.txt",
+      "pip-delete-this-directory.txt",
+      ".pytest_cache/",
+      ".coverage",
+    ],
+    iconUrl:
+      "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/python.svg",
+    triggers: ["requirements.txt", "setup.py", "pyproject.toml"],
+  },
+  {
+    id: "javascript",
+    name: "JavaScript",
+    extensions: [".js", ".cjs", ".mjs", ".jsx", ".jsm", ".jsonc"],
+    ignores: [
+      "node_modules/",
+      "npm-debug.log*",
+      "yarn-debug.log*",
+      "yarn-error.log*",
+      "package-lock.json",
+      "yarn.lock",
+      "pnpm-lock.yaml",
+      ".env",
+      ".env.local",
+      "dist/",
+      "build/",
+    ],
+    iconUrl:
+      "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/javascript.svg",
+    triggers: ["package.json", ".npmrc"],
+  },
+  {
+    id: "html-css",
+    name: "HTML/CSS",
+    extensions: [
+      ".html",
+      ".htm",
+      ".xhtml",
+      ".css",
+      ".scss",
+      ".sass",
+      ".less",
+      ".postcss",
+    ],
+    ignores: [
+      ".cache/",
+      ".parcel-cache/",
+      "*.css.map",
+      "*.sass.map",
+      "*.scss.map",
+      "dist/",
+    ],
+    iconUrl:
+      "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/html5.svg",
+    triggers: ["index.html", "style.css"],
+  },
+  {
+    id: "sql",
+    name: "SQL",
+    extensions: [".sql", ".psql", ".hql", ".ddl", ".dml"],
+    ignores: [
+      "*.db",
+      "*.sqlite",
+      "*.sqlite3",
+      "*.mdb",
+      "*.accdb",
+      "*.sqlitedb",
+    ],
+    iconUrl: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/mysql.svg",
+    triggers: ["schema.sql", "migrations/"],
+  },
+  {
+    id: "java",
+    name: "Java",
+    extensions: [
+      ".java",
+      ".class",
+      ".jar",
+      ".war",
+      ".ear",
+      ".jvm",
+      ".gradle",
+      ".maven",
+    ],
+    ignores: [
+      "target/",
+      "*.class",
+      "*.jar",
+      "*.war",
+      "*.ear",
+      ".gradle/",
+      "build/",
+      ".idea/",
+      "*.iml",
+      "out/",
+      "*.log",
+    ],
+    iconUrl: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/java.svg",
+    triggers: ["pom.xml", "build.gradle"],
+  },
+  {
+    id: "csharp",
+    name: "C#",
+    extensions: [".cs", ".csproj", ".sln", ".cshtml", ".csx", ".cake", ".razor"],
+    ignores: [
+      "bin/",
+      "obj/",
+      "*.suo",
+      "*.user",
+      ".vs/",
+      ".vscode/",
+      "*.userprefs",
+      "packages/",
+      "*.nupkg",
+      "project.lock.json",
+    ],
+    iconUrl:
+      "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/csharp.svg",
+    triggers: ["*.csproj", "*.sln"],
+  },
+  {
+    id: "cpp",
+    name: "C++",
+    extensions: [
+      ".cpp",
+      ".cc",
+      ".cxx",
+      ".c++",
+      ".h",
+      ".hpp",
+      ".hh",
+      ".hxx",
+      ".inl",
+      ".ipp",
+      ".tcc",
+    ],
+    ignores: [
+      "*.o",
+      "*.obj",
+      "*.exe",
+      "*.out",
+      "*.app",
+      "*.a",
+      "*.so",
+      "*.dylib",
+      "Debug/",
+      "Release/",
+      "x64/",
+      "x86/",
+      "CMakeFiles/",
+      "CMakeCache.txt",
+      "cmake_install.cmake",
+      "Makefile",
+    ],
+    iconUrl:
+      "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/cplusplus.svg",
+    triggers: ["CMakeLists.txt", "*.vcxproj"],
+  },
+  {
+    id: "go",
+    name: "Go",
+    extensions: [".go", ".mod", ".sum"],
+    ignores: [
+      "*.exe",
+      "*.dll",
+      "*.so",
+      "*.dylib",
+      "vendor/",
+      "*.test",
+      "dist/",
+      "bin/",
+    ],
+    iconUrl: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/go.svg",
+    triggers: ["go.mod", "go.sum"],
+  },
+  {
+    id: "rust",
+    name: "Rust",
+    extensions: [".rs", ".rlib", ".rmeta"],
+    ignores: ["target/", "Cargo.lock", "*.pdb", "dist/", "*.swp"],
+    iconUrl: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/rust.svg",
+    triggers: ["Cargo.toml", "Cargo.lock"],
+  },
+  {
+    id: "php",
+    name: "PHP",
+    extensions: [
+      ".php",
+      ".php3",
+      ".php4",
+      ".php5",
+      ".phtml",
+      ".phps",
+      ".phar",
+    ],
+    ignores: [
+      "/vendor/",
+      "composer.lock",
+      ".env",
+      ".phpunit.result.cache",
+      "node_modules/",
+    ],
+    iconUrl: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/php.svg",
+    triggers: ["composer.json", "composer.lock"],
+  },
+  {
+    id: "kotlin",
+    name: "Kotlin",
+    extensions: [".kt", ".kts", ".ktm", ".gradle"],
+    ignores: ["*.class", "build/", ".idea/", "*.iml", "out/", ".gradle/"],
+    iconUrl:
+      "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/kotlin.svg",
+    triggers: ["build.gradle.kts", "pom.xml"],
+  },
+  {
+    id: "swift",
+    name: "Swift",
+    extensions: [".swift", ".swifttemplate", ".xcodeproj"],
+    ignores: [
+      "xcuserdata/",
+      "*.xcuserstate",
+      "build/",
+      "*.ipa",
+      ".build/",
+      ".swiftpm/",
+    ],
+    iconUrl: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/swift.svg",
+    triggers: ["Package.swift", "*.xcodeproj"],
+  },
+  {
+    id: "ruby",
+    name: "Ruby",
+    extensions: [".rb", ".rbw", ".rake", ".gemspec", ".erb"],
+    ignores: [
+      "*.gem",
+      ".bundle",
+      "vendor/bundle",
+      ".rvmrc",
+      ".ruby-version",
+      "Gemfile.lock",
+      ".byebug_history",
+      "tmp/",
+    ],
+    iconUrl: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/ruby.svg",
+    triggers: ["Gemfile", "Gemfile.lock"],
+  },
+  {
+    id: "bash-shell",
+    name: "Bash/Shell",
+    extensions: [".sh", ".bash", ".zsh", ".fish", ".ksh", ".csh"],
+    ignores: ["*.swp", "*.swo", "*~", ".bash_history", ".zsh_history"],
+    iconUrl:
+      "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/gnubash.svg",
+    triggers: ["*.sh"],
+  },
+  {
+    id: "c",
+    name: "C",
+    extensions: [".c", ".h", ".idc", ".w"],
+    ignores: ["*.o", "*.obj", "*.a", "*.exe", "*.out", "*.so", "*.dylib"],
+    iconUrl: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/c.svg",
+    triggers: ["Makefile", "*.h"],
+  },
+  {
+    id: "r",
+    name: "R",
+    extensions: [".r", ".R", ".Rmd", ".RData", ".rds", ".Rproj"],
+    ignores: [".Rhistory", ".RData", ".Ruserdata", ".Rproj.user/"],
+    iconUrl: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/r.svg",
+    triggers: [".Rproj", "DESCRIPTION"],
+  },
+  {
+    id: "scala",
+    name: "Scala",
+    extensions: [".scala", ".sc", ".sbt"],
+    ignores: ["target/", ".idea/", "*.class", "*.jar"],
+    iconUrl:
+      "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/scala.svg",
+    triggers: ["build.sbt", "project/"],
+  },
+  {
+    id: "perl",
+    name: "Perl",
+    extensions: [".pl", ".pm", ".t", ".pod", ".cgi"],
+    ignores: ["*.perlcritic", "cover_db/", "*.o", "blib/"],
+    iconUrl: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/perl.svg",
+    triggers: ["Makefile.PL", "cpanfile"],
+  },
+  {
+    id: "dart",
+    name: "Dart",
+    extensions: [".dart", ".dill", ".g.dart"],
+    ignores: [".dart_tool/", ".pub-cache/", ".pub/", "build/", "*.g.dart"],
+    iconUrl: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/dart.svg",
+    triggers: ["pubspec.yaml", "pubspec.lock"],
+  },
+  {
+    id: "elixir",
+    name: "Elixir",
+    extensions: [".ex", ".exs", ".eex", ".leex"],
+    ignores: [
+      "_build/",
+      "deps/",
+      ".fetch",
+      "erl_crash.dump",
+      "*.ez",
+      "*.beam",
+    ],
+    iconUrl:
+      "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/elixir.svg",
+    triggers: ["mix.exs", "mix.lock"],
+  },
+  {
+    id: "lua",
+    name: "Lua",
+    extensions: [".lua", ".luac", ".lua5.1", ".rockspec"],
+    ignores: ["*.luac", "luac.out"],
+    iconUrl: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/lua.svg",
+    triggers: ["*.rockspec"],
+  },
+  {
+    id: "assembly",
+    name: "Assembly",
+    extensions: [".asm", ".s", ".S", ".nasm", ".a51", ".inc", ".obj"],
+    ignores: ["*.o", "*.obj", "*.exe", "*.bin", "*.hex"],
+    iconUrl:
+      "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/assemblyscript.svg",
+    triggers: ["Makefile"],
+  },
+  {
+    id: "groovy",
+    name: "Groovy",
+    extensions: [".groovy", ".gvy", ".gy", ".gsh", ".gradle"],
+    ignores: ["*.class", "build/", ".gradle/"],
+    iconUrl:
+      "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/groovy.svg",
+    triggers: ["build.gradle", "Jenkinsfile"],
+  },
+  {
+    id: "vb-net",
+    name: "Visual Basic .NET",
+    extensions: [".vb", ".vba", ".vbs", ".frm", ".cls"],
+    ignores: ["bin/", "obj/", "*.suo", "*.user"],
+    iconUrl:
+      "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/dotnet.svg",
+    triggers: ["*.vbproj", "*.sln"],
+  },
+  {
+    id: "react",
+    name: "React",
+    extensions: [".js", ".jsx", ".ts", ".tsx"],
+    ignores: [
+      "node_modules/",
+      "build/",
+      "dist/",
+      ".env",
+      ".env.local",
+      "npm-debug.log*",
+      "yarn-debug.log*",
+      "coverage/",
+      ".eslintcache",
+    ],
+    iconUrl: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/react.svg",
+    triggers: ["package.json", "*.jsx", "*.tsx"],
+  },
+  {
+    id: "nextjs",
+    name: "Next.js",
+    extensions: [".js", ".jsx", ".ts", ".tsx"],
+    ignores: [
+      ".next/",
+      "out/",
+      "build/",
+      "dist/",
+      ".vercel",
+      "*.tsbuildinfo",
+      "node_modules/",
+    ],
+    iconUrl:
+      "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/nextdotjs.svg",
+    triggers: ["next.config.js", "package.json"],
+  },
+  {
+    id: "django",
+    name: "Django",
+    extensions: [".py"],
+    ignores: [
+      "*.log",
+      "*.pot",
+      "*.pyc",
+      "__pycache__/",
+      "db.sqlite3",
+      "media/",
+      "staticfiles/",
+      "venv/",
+      ".env",
+    ],
+    iconUrl:
+      "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/django.svg",
+    triggers: ["manage.py", "wsgi.py"],
+  },
+  {
+    id: "vuejs",
+    name: "Vue.js",
+    extensions: [".js", ".jsx", ".ts", ".tsx", ".vue"],
+    ignores: [
+      "node_modules/",
+      "/dist",
+      "/build",
+      ".env",
+      ".env.local",
+      "npm-debug.log*",
+      "yarn-debug.log*",
+      ".eslintcache",
+    ],
+    iconUrl:
+      "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/vuedotjs.svg",
+    triggers: ["package.json", "*.vue"],
+  },
+  {
+    id: "spring-boot",
+    name: "Spring Boot",
+    extensions: [".java", ".properties", ".yml", ".yaml"],
+    ignores: [
+      "target/",
+      "*.jar",
+      "*.war",
+      "*.ear",
+      ".gradle/",
+      "build/",
+      "out/",
+      ".idea/",
+      "*.iml",
+      ".classpath",
+      ".project",
+    ],
+    iconUrl:
+      "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/springboot.svg",
+    triggers: ["pom.xml", "build.gradle", "application.properties"],
+  },
+  {
+    id: "expressjs",
+    name: "Express.js",
+    extensions: [".js", ".ts"],
+    ignores: [
+      "node_modules/",
+      "npm-debug.log*",
+      "yarn-debug.log*",
+      "yarn-error.log*",
+      ".env",
+      ".env.local",
+      "dist/",
+      "build/",
+    ],
+    iconUrl:
+      "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/express.svg",
+    triggers: ["package.json", "server.js", "index.js"],
+  },
+  {
+    id: "angular",
+    name: "Angular",
+    extensions: [".ts", ".tsx", ".html", ".css"],
+    ignores: [
+      "dist/",
+      ".angular/",
+      "node_modules/",
+      "npm-debug.log*",
+      "yarn-error.log*",
+      ".vscode/",
+      ".idea/",
+      "*.swp",
+      "*.swo",
+    ],
+    iconUrl:
+      "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/angular.svg",
+    triggers: ["angular.json", "package.json"],
+  },
+  {
+    id: "nuxtjs",
+    name: "Nuxt.js",
+    extensions: [".js", ".jsx", ".ts", ".tsx", ".vue"],
+    ignores: [
+      ".nuxt/",
+      "dist/",
+      "node_modules/",
+      "npm-debug.log*",
+      "yarn-debug.log*",
+      ".env",
+      ".env.local",
+      ".output/",
+    ],
+    iconUrl:
+      "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/nuxtdotjs.svg",
+    triggers: ["nuxt.config.ts", "package.json"],
+  },
+  {
+    id: "remix",
+    name: "Remix",
+    extensions: [".js", ".jsx", ".ts", ".tsx"],
+    ignores: [
+      "build/",
+      "dist/",
+      ".remix",
+      "node_modules/",
+      "npm-debug.log*",
+      ".env",
+      ".env.local",
+      ".vercel",
+    ],
+    iconUrl:
+      "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/remix.svg",
+    triggers: ["remix.config.js", "package.json"],
+  },
+  {
+    id: "sveltekit",
+    name: "SvelteKit",
+    extensions: [".js", ".ts", ".svelte"],
+    ignores: [
+      ".svelte-kit/",
+      "build/",
+      "dist/",
+      "node_modules/",
+      "npm-debug.log*",
+      ".env",
+      ".env.local",
+      "vite.config.js.timestamp-*",
+    ],
+    iconUrl:
+      "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/svelte.svg",
+    triggers: ["svelte.config.js", "package.json"],
+  },
+  {
+    id: "astro",
+    name: "Astro",
+    extensions: [".js", ".ts", ".astro"],
+    ignores: [
+      "dist/",
+      ".astro/",
+      "node_modules/",
+      "npm-debug.log*",
+      ".env",
+      ".env.local",
+      ".vercel",
+    ],
+    iconUrl: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/astro.svg",
+    triggers: ["astro.config.mjs", "package.json"],
+  },
+  {
+    id: "qwik",
+    name: "Qwik",
+    extensions: [".js", ".ts", ".jsx", ".tsx"],
+    ignores: [
+      "dist/",
+      ".qwik/",
+      "node_modules/",
+      "npm-debug.log*",
+      ".env",
+      ".env.local",
+      ".vercel",
+    ],
+    iconUrl: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/qwik.svg",
+    triggers: ["qwik.config.ts", "package.json"],
+  },
+  {
+    id: "nestjs",
+    name: "NestJS",
+    extensions: [".ts"],
+    ignores: [
+      "dist/",
+      "node_modules/",
+      "npm-debug.log*",
+      ".env",
+      ".env.local",
+      ".vercel",
+      "coverage/",
+      ".nyc_output/",
+    ],
+    iconUrl:
+      "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/nestjs.svg",
+    triggers: ["package.json", "src/main.ts"],
+  },
+  {
+    id: "fastify",
+    name: "Fastify",
+    extensions: [".js", ".ts"],
+    ignores: [
+      "dist/",
+      "node_modules/",
+      "npm-debug.log*",
+      ".env",
+      ".env.local",
+      "coverage/",
+      ".nyc_output/",
+    ],
+    iconUrl:
+      "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/fastify.svg",
+    triggers: ["package.json", "server.js"],
+  },
+  {
+    id: "koa",
+    name: "Koa",
+    extensions: [".js", ".ts"],
+    ignores: [
+      "dist/",
+      "node_modules/",
+      "npm-debug.log*",
+      ".env",
+      ".env.local",
+      "coverage/",
+    ],
+    iconUrl: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/koa.svg",
+    triggers: ["package.json", "index.js"],
+  },
+  {
+    id: "hapijs",
+    name: "Hapi.js",
+    extensions: [".js", ".ts"],
+    ignores: [
+      "dist/",
+      "node_modules/",
+      "npm-debug.log*",
+      ".env",
+      ".env.local",
+      "coverage/",
+      ".nyc_output/",
+    ],
+    iconUrl:
+      "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/hapijs.svg",
+    triggers: ["package.json", "server.js"],
+  },
+  {
+    id: "meteorjs",
+    name: "Meteor.js",
+    extensions: [".js", ".jsx", ".ts", ".tsx"],
+    ignores: [
+      "node_modules/",
+      ".meteor/local/",
+      ".meteor/dev_bundle/",
+      "npm-debug.log*",
+      ".env",
+      ".env.local",
+      "dist/",
+    ],
+    iconUrl:
+      "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/meteor.svg",
+    triggers: ["package.json", ".meteor/"],
+  },
+  {
+    id: "solidjs",
+    name: "SolidJS",
+    extensions: [".js", ".ts", ".jsx", ".tsx"],
+    ignores: [
+      "dist/",
+      ".solid/",
+      "node_modules/",
+      "npm-debug.log*",
+      ".env",
+      ".env.local",
+      "coverage/",
+    ],
+    iconUrl: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/solid.svg",
+    triggers: ["vite.config.ts", "package.json"],
+  },
+  {
+    id: "emberjs",
+    name: "Ember.js",
+    extensions: [".js", ".ts", ".hbs"],
+    ignores: [
+      "dist/",
+      "tmp/",
+      "node_modules/",
+      "npm-debug.log*",
+      ".env",
+      ".env.local",
+      ".cache/",
+    ],
+    iconUrl:
+      "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/ember.svg",
+    triggers: ["ember-cli-build.js", "package.json"],
+  },
+  {
+    id: "laravel",
+    name: "Laravel",
+    extensions: [".php"],
+    ignores: [
+      "/vendor/",
+      "node_modules/",
+      "npm-debug.log*",
+      "yarn-error.log*",
+      ".env",
+      ".env.local",
+      "storage/",
+      "bootstrap/cache/",
+      ".vscode/",
+      ".idea/",
+      "composer.lock",
+      "package-lock.json",
+    ],
+    iconUrl:
+      "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/laravel.svg",
+    triggers: ["artisan", "composer.json"],
+  },
+  {
+    id: "godot4",
+    name: "Godot 4",
+    extensions: [".gd", ".gdshader", ".gdscript", ".tscn", ".tres"],
+    ignores: [
+      ".godot/",
+      ".mono/",
+      "export/",
+      "*.import",
+      "*.generated",
+      "user_data/",
+      ".DS_Store",
+      "Thumbs.db",
+      "*.log",
+      ".cache/",
+      "*.swp",
+      "*.swo",
+      "*~",
+    ],
+    iconUrl:
+      "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/godotengine.svg",
+    triggers: ["project.godot", "*.tscn"],
+  },
+];
+
+/**
+ * Universal .gitignore patterns for all projects
+ */
+export const universalGitignorePatterns = [
+  "# OS Files & Metadata",
+  "ehthumbs.db",
+  "Desktop.ini",
+  ".AppleDouble",
+  ".LSOverride",
+  "._*",
+  ".Spotlight-V100",
+  ".Trashes",
+  ".TemporaryItems",
+  "Thumbs.db.lock",
+  ".fseventsd",
+  ".fuse_hidden*",
+  "",
+  "# Editor Configuration",
+  ".sublime-project",
+  ".sublime-workspace",
+  ".atom/",
+  ".nova/",
+  ".editorconfig",
+  ".c9/",
+  "",
+  "# Security Files",
+  "*.key",
+  "*.pem",
+  "*.p12",
+  "*.pfx",
+  "*.jks",
+  "*.cert",
+  "*.crt",
+  "*.der",
+  "secrets/",
+  "private/",
+  "credentials/",
+  "",
+  "# Temporary & Backup Files",
+  "*.bak",
+  "*.tmp",
+  "*.backup",
+  "backup/",
+  ".backup/",
+  "*.orig",
+  "",
+  "# Miscellaneous",
+  ".directory",
+  ".netrc",
+];
+
+/**
+ * Find a template by ID
+ */
+export function findTemplateById(id: string): CodebaseTemplate | undefined {
+  return templates.find((template) => template.id === id);
+}
+
+/**
+ * Find a template by name
+ */
+export function findTemplateByName(
+  name: string
+): CodebaseTemplate | undefined {
+  return templates.find((template) =>
+    template.name.toLowerCase().includes(name.toLowerCase())
+  );
+}
+
+/**
+ * Detect templates based on file triggers
+ */
+export function detectTemplatesByFiles(
+  fileNames: string[]
+): CodebaseTemplate[] {
+  const detectedTemplates = new Set<CodebaseTemplate>();
+
+  for (const template of templates) {
+    for (const fileName of fileNames) {
+      if (template.triggers.some((trigger) => fileName.includes(trigger))) {
+        detectedTemplates.add(template);
+        break;
+      }
+    }
+  }
+
+  return Array.from(detectedTemplates);
+}
+
+/**
+ * Generate combined .gitignore content for multiple templates
+ */
+export function generateGitignore(templateIds: string[]): string {
+  const ignorePatterns = new Set<string>(universalGitignorePatterns);
+  const templateNames: string[] = [];
+
+  for (const id of templateIds) {
+    const template = findTemplateById(id);
+    if (template) {
+      templateNames.push(template.name);
+      template.ignores.forEach((pattern) => ignorePatterns.add(pattern));
+    }
+  }
+
+  let gitignore = "";
+
+  if (templateNames.length > 0) {
+    gitignore += `# ${templateNames.join(", ")} Configuration\n`;
+    gitignore += Array.from(ignorePatterns)
+      .filter((pattern) => pattern.trim().length > 0)
+      .join("\n");
+  }
+
+  return gitignore;
+}
+
+
+==================================================
+File: src\routes\+layout.svelte
+==================================================
+
+<script lang="ts">
+	import favicon from '$lib/assets/favicon.svg';
+	import '../app.css';
+
+	let { children } = $props();
+</script>
+
+<svelte:head>
+	<link rel="icon" href={favicon} />
+</svelte:head>
+
+{@render children()}
+
+
+
+==================================================
+File: src\routes\+page.svelte
+==================================================
+
+<script lang="ts">
+    import { onMount } from 'svelte';
+    import { templates } from '$lib/templates';
+    import { fade } from 'svelte/transition';
+
+    // --- STATE ---
+    let isDetecting = $state(true);
+    let isProcessing = $state(false);
+    let settingsOpen = $state(false);
+    let customPathOpen = $state(false);
+
+    // Data
+    let detectedIds: string[] = $state([]);
+    let selectedIds: string[] = $state([]);
+    let maxChars = $state(75000);
+    let customPath = $state('');
+
+    // Results
+    let result: { success: boolean; outputPath: string; files: string[] } | null = $state(null);
+
+    // --- COMPUTED ---
+    let selectedTemplateObjects = $derived(templates.filter(t => selectedIds.includes(t.id)));
+    let detectedTemplateObjects = $derived(templates.filter(t => detectedIds.includes(t.id)));
+
+    // --- LOGIC ---
+
+    onMount(async () => {
+        await detect();
+    });
+
+    async function detect() {
+        try {
+            const res = await fetch('/api/detect');
+            const data = await res.json();
+            detectedIds = data.detected;
+            // Default selection is what we detected, or everything if nothing detected?
+            // Let's default to detected. If empty, user selects manually.
+            selectedIds = [...detectedIds];
+        } catch (e) {
+            console.error(e);
+        } finally {
+            isDetecting = false;
+        }
+    }
+
+    function toggleTemplate(id: string) {
+        if (selectedIds.includes(id)) {
+            selectedIds = selectedIds.filter(i => i !== id);
+        } else {
+            selectedIds = [...selectedIds, id];
+        }
+    }
+
+    async function runForge(mode: 'root' | 'global' | 'custom') {
+        if (mode === 'custom' && !customPath) {
+            customPathOpen = true;
+            return;
+        }
+
+        isProcessing = true;
+        result = null;
+
+        try {
+            const res = await fetch('/api/forge', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    saveMode: mode,
+                    customPath,
+                    templateIds: selectedIds,
+                    maxChars
+                })
+            });
+            result = await res.json();
+
+            // Auto-open folder on success
+            if (result && result.success) {
+                await fetch('/api/open', {
+                    method: 'POST',
+                    body: JSON.stringify({ path: result.outputPath })
+                });
+            }
+
+        } catch (e) {
+            alert("Connection error");
+        } finally {
+            isProcessing = false;
+            customPathOpen = false;
+        }
+    }
+</script>
+
+<div class="min-h-screen flex flex-col items-center p-8 relative">
+
+    <!-- Header -->
+    <div class="text-center mb-12 mt-8 animate-fade-in-up">
+        <h1 class="text-6xl font-black tracking-tighter bg-gradient-to-r from-indigo-300 via-purple-300 to-cyan-300 bg-clip-text text-transparent mb-4 drop-shadow-[0_0_30px_rgba(99,102,241,0.3)]">
+            TXT-FORGE
+        </h1>
+        <p class="text-slate-400 font-light text-lg tracking-wide">Transforms codebases into AI-ready artifacts.</p>
+    </div>
+
+    <div class="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+        <!-- LEFT COLUMN: Configuration -->
+        <div class="lg:col-span-2 flex flex-col gap-6 animate-fade-in-up" style="animation-delay: 0.1s;">
+
+            <!-- 1. TEMPLATES CARD -->
+            <div class="bg-slate-900/40 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-2xl">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-xs font-bold text-indigo-400 uppercase tracking-widest flex items-center gap-2">
+                        {#if isDetecting}
+                            <span class="w-2 h-2 bg-indigo-500 rounded-full animate-ping"></span> Detecting...
+                        {:else}
+                            <span class="w-2 h-2 bg-emerald-500 rounded-full shadow-[0_0_10px_#10b981]"></span>
+                            Detected Stack
+                        {/if}
+                    </h2>
+                    <button on:click={() => selectedIds = []} class="text-xs text-slate-500 hover:text-white transition-colors">Clear All</button>
+                </div>
+
+                <!-- Selected/Detected View -->
+                {#if selectedIds.length > 0}
+                    <div class="flex flex-wrap gap-3 mb-6">
+                        {#each selectedTemplateObjects as tmpl}
+                            <button
+                                on:click={() => toggleTemplate(tmpl.id)}
+                                class="group relative flex items-center gap-3 bg-slate-800/50 hover:bg-indigo-500/20 border border-indigo-500/30 hover:border-indigo-400 text-slate-200 px-4 py-3 rounded-xl transition-all duration-300 hover:shadow-[0_0_20px_rgba(99,102,241,0.2)]"
+                            >
+                                <img src={tmpl.iconUrl} alt={tmpl.name} class="w-5 h-5 opacity-80 group-hover:opacity-100 transition-opacity" />
+                                <span class="font-medium text-sm">{tmpl.name}</span>
+                                <span class="absolute -top-1 -right-1 w-2 h-2 bg-indigo-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"></span>
+                            </button>
+                        {/each}
+                    </div>
+                {:else}
+                     <div class="text-center py-10 text-slate-500 border border-dashed border-slate-800 rounded-xl mb-6">
+                        Select templates below or detect automatically.
+                     </div>
+                {/if}
+
+                <!-- Expander for All Templates -->
+                <div class="border-t border-white/5 pt-4">
+                    <h3 class="text-[10px] uppercase font-bold text-slate-600 mb-3">Available Templates</h3>
+                    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 max-h-48 overflow-y-auto pr-2 scrollbar-thin">
+                        {#each templates as tmpl}
+                            <button
+                                on:click={() => toggleTemplate(tmpl.id)}
+                                class="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-left transition-all
+                                {selectedIds.includes(tmpl.id)
+                                    ? 'bg-indigo-500/10 text-indigo-300 border border-indigo-500/20'
+                                    : 'bg-slate-950/50 text-slate-500 border border-transparent hover:bg-slate-800'}"
+                            >
+                                <img src={tmpl.iconUrl} alt="" class="w-3 h-3 opacity-50 grayscale" />
+                                {tmpl.name}
+                            </button>
+                        {/each}
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- RIGHT COLUMN: Actions -->
+        <div class="flex flex-col gap-6 animate-fade-in-up" style="animation-delay: 0.2s;">
+
+            <!-- SETTINGS CARD -->
+            <div class="bg-slate-900/40 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-2xl relative overflow-hidden">
+                <div class="flex justify-between items-center">
+                    <div class="flex items-center gap-2 text-slate-300 text-sm font-medium">
+                        <span>Splitting Strategy</span>
+                    </div>
+                    <button on:click={() => settingsOpen = !settingsOpen} class="text-slate-500 hover:text-indigo-400 transition-colors">
+                        ⚙
+                    </button>
+                </div>
+
+                {#if settingsOpen}
+                    <div transition:fade class="mt-4 pt-4 border-t border-white/5">
+                        <label class="text-xs text-slate-500 uppercase font-bold mb-2 block">Max Characters per File</label>
+                        <div class="flex gap-4">
+                            <input
+                                type="range" min="10000" max="200000" step="5000"
+                                bind:value={maxChars}
+                                class="flex-1 accent-indigo-500 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer"
+                            />
+                            <span class="font-mono text-indigo-400 text-xs bg-indigo-500/10 px-2 py-1 rounded border border-indigo-500/20">
+                                {(maxChars / 1000).toFixed(0)}k
+                            </span>
+                        </div>
+                    </div>
+                {:else}
+                     <div class="mt-2 text-xs text-slate-500">
+                        Auto-splitting files larger than <span class="text-indigo-400">{(maxChars/1000).toFixed(0)}k</span> chars at function boundaries.
+                     </div>
+                {/if}
+            </div>
+
+            <!-- ACTIONS -->
+            <div class="grid gap-3">
+                <button on:click={() => runForge('root')} disabled={isProcessing || selectedIds.length === 0}
+                    class="group relative overflow-hidden p-5 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 border border-white/5 hover:border-indigo-500/50 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-indigo-500/10 hover:-translate-y-1">
+                    <div class="absolute inset-0 bg-indigo-500/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    <div class="relative z-10">
+                        <div class="text-xl mb-1">📁</div>
+                        <div class="font-bold text-slate-200 group-hover:text-white">Project Root</div>
+                        <div class="text-[10px] text-slate-500">./TXT-Forge</div>
+                    </div>
+                </button>
+
+                <button on:click={() => runForge('global')} disabled={isProcessing || selectedIds.length === 0}
+                    class="group relative overflow-hidden p-5 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 border border-white/5 hover:border-cyan-500/50 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-cyan-500/10 hover:-translate-y-1">
+                    <div class="absolute inset-0 bg-cyan-500/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    <div class="relative z-10">
+                        <div class="text-xl mb-1">🏦</div>
+                        <div class="font-bold text-slate-200 group-hover:text-white">Global Vault</div>
+                        <div class="text-[10px] text-slate-500">~/.txt-forge-vault</div>
+                    </div>
+                </button>
+
+                <button on:click={() => customPathOpen = true} disabled={isProcessing || selectedIds.length === 0}
+                    class="group relative overflow-hidden p-5 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 border border-white/5 hover:border-emerald-500/50 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-emerald-500/10 hover:-translate-y-1">
+                    <div class="absolute inset-0 bg-emerald-500/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    <div class="relative z-10">
+                        <div class="text-xl mb-1">📍</div>
+                        <div class="font-bold text-slate-200 group-hover:text-white">Custom Path</div>
+                        <div class="text-[10px] text-slate-500">{customPath ? customPath : 'Select destination...'}</div>
+                    </div>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SUCCESS OVERLAY / RESULT -->
+    {#if result}
+        <div transition:fade class="mt-8 w-full max-w-3xl bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-6 flex items-start gap-4 backdrop-blur-md">
+            <div class="bg-emerald-500 rounded-full p-2 text-slate-900">✓</div>
+            <div class="flex-1">
+                <h3 class="font-bold text-emerald-400 mb-1">Forging Complete!</h3>
+                <p class="text-xs text-emerald-200/70 mb-3">Output saved to: {result.outputPath}</p>
+                <div class="bg-slate-950/50 rounded-lg p-3 max-h-40 overflow-y-auto font-mono text-[10px] text-emerald-400/80">
+                    {#each result.files as f}
+                        <div>📄 {f}</div>
+                    {/each}
+                </div>
+            </div>
+        </div>
+    {/if}
+
+    <!-- CUSTOM PATH MODAL -->
+    {#if customPathOpen}
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm" transition:fade>
+            <div class="bg-slate-900 border border-white/10 rounded-2xl p-8 w-full max-w-lg shadow-2xl relative">
+                <button on:click={() => customPathOpen = false} class="absolute top-4 right-4 text-slate-500 hover:text-white">✕</button>
+                <h3 class="text-xl font-bold text-white mb-4">Where should we save?</h3>
+                <p class="text-sm text-slate-400 mb-4">Paste the absolute path to your desired output folder.</p>
+                <input
+                    type="text"
+                    bind:value={customPath}
+                    placeholder="C:/Users/Dev/Documents/MyVault..."
+                    class="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-3 text-sm text-white focus:border-indigo-500 outline-none mb-6"
+                    autofocus
+                />
+                <button
+                    on:click={() => runForge('custom')}
+                    disabled={!customPath}
+                    class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    Forge Files Here
+                </button>
+            </div>
+        </div>
+    {/if}
+
+    <!-- FOOTER -->
+    <div class="mt-auto pt-12 pb-6 text-center">
+        <p class="text-[10px] text-slate-600">TXT-FORGE v2.0 • Local Environment</p>
+    </div>
+</div>
+
+
+==================================================
+File: src\routes\api\detect\+server.ts
+==================================================
+
+import { json } from '@sveltejs/kit';
+import { detectCodebase } from '$lib/processor';
+
+export async function GET() {
+    const cwd = process.env.TXT_FORGE_CWD || process.cwd();
+    const detected = await detectCodebase(cwd);
+    return json({ detected });
+}
+
+
+
+==================================================
+File: src\routes\api\forge\+server.ts
+==================================================
+
+import { json } from '@sveltejs/kit';
+import { processFiles } from '$lib/processor';
+
+export async function POST({ request }) {
+    const body = await request.json();
+    const cwd = process.env.TXT_FORGE_CWD || process.cwd();
+
+    const result = await processFiles({
+        sourceDir: cwd,
+        saveMode: body.saveMode,
+        customPath: body.customPath,
+        templateIds: body.templateIds,
+        maxChars: body.maxChars
+    });
+
+    return json(result);
+}
+
+
+
+==================================================
+File: src\routes\api\open\+server.ts
+==================================================
+
+import { json } from '@sveltejs/kit';
+import open from 'open';
+import path from 'path';
+
+export async function POST({ request }) {
+    const { path: folderPath } = await request.json();
+    try {
+        await open(folderPath);
+        return json({ success: true });
+    } catch (e) {
+        console.error(e);
+        return json({ success: false }, { status: 500 });
+    }
+}
+
+
+
+==================================================
+File: svelte.config.js
+==================================================
+
+import adapter from '@sveltejs/adapter-node';
+import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
+
+/** @type {import('@sveltejs/kit').Config} */
+const config = {
+	preprocess: vitePreprocess(),
+	kit: {
+		adapter: adapter({
+            // Keeps the build clean and self-contained
+            out: 'build',
+            precompress: false,
+            envPrefix: ''
+        })
+	}
+};
+
+export default config;
+
+
+
+==================================================
+File: tailwind.config.js
+==================================================
+
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: ['./src/**/*.{html,js,svelte,ts}'],
+  theme: {
+    extend: {},
+  },
+  plugins: [],
+}
+
+
+
+==================================================
+File: test-project\app.js
+==================================================
+
+��c o n s o l e . l o g ( " H e l l o   W o r l d " ) ;  
+ 
+
+
+==================================================
+File: vite.config.ts
+==================================================
+
+import { sveltekit } from '@sveltejs/kit/vite';
+import { defineConfig } from 'vite';
+
+export default defineConfig({
+	plugins: [sveltekit()]
+});
+
+
