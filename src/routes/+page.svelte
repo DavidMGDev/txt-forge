@@ -322,17 +322,26 @@
 
 <style>
     /* Custom Scrollbar for inner containers */
+    .custom-scrollbar {
+        scrollbar-width: thin;
+        scrollbar-color: rgba(255,255,255,0.2) rgba(255,255,255,0.02);
+    }
     .custom-scrollbar::-webkit-scrollbar {
-        width: 6px;
+        width: 8px;
     }
     .custom-scrollbar::-webkit-scrollbar-track {
         background: rgba(255,255,255,0.02);
+        border-radius: 4px;
     }
     .custom-scrollbar::-webkit-scrollbar-thumb {
-        background: rgba(255,255,255,0.1);
-        border-radius: 10px;
+        background: rgba(255,255,255,0.15);
+        border-radius: 4px;
+        border: 1px solid rgba(255,255,255,0.02);
     }
     .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-        background: rgba(255,255,255,0.2);
+        background: rgba(255,255,255,0.25);
+    }
+    .custom-scrollbar::-webkit-scrollbar-corner {
+        background: rgba(255,255,255,0.02);
     }
 </style>
