@@ -1,12 +1,20 @@
 <script lang="ts">
-	import favicon from '$lib/assets/favicon.svg';
 	import '../app.css';
+
+	// 1. Import the images from your lib folder
+	import faviconSvg from '$lib/assets/favicon.svg';
+	import faviconPng from '$lib/assets/favicon.png';
 
 	let { children } = $props();
 </script>
 
+<!-- 2. Inject them into the document head -->
 <svelte:head>
-	<link rel="icon" href={favicon} />
+	<title>TXT-Forge: Source to Text</title>
+
+	<link rel="icon" href={faviconPng} sizes="any" />
+	<link rel="icon" href={faviconSvg} type="image/svg+xml" />
+	<link rel="apple-touch-icon" href={faviconPng} />
     <style>
         /* Global dark scrollbar fix for the entire app */
         :global(html) {
