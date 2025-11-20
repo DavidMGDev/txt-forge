@@ -929,7 +929,9 @@
 
     <!-- Main Grid -->
 
-    <div class="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-3 gap-8">
+    <!-- UPDATED: Added 'relative z-20' to ensure this entire section (and its tooltips)
+         sits ABOVE the Header (which is z-10). -->
+    <div class="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-3 gap-8 relative z-20">
 
         <!-- LEFT COLUMN: Configuration -->
 
