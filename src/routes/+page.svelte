@@ -1194,19 +1194,21 @@
 
         <div class="flex flex-col gap-6 animate-fade-in-up" style="animation-delay: 0.2s;">
 
-            <!-- INCLUDE IGNORED PANEL (Renamed & Tooltip Restored) -->
-            <!-- Removed overflow-hidden to allow tooltip popup -->
-            <div class="bg-slate-900/40 backdrop-blur-xl border border-white/10 rounded-3xl p-6 shadow-2xl flex items-center justify-between relative z-20">
+            <!-- INCLUDE IGNORED PANEL (Fixed Layout) -->
+
+            <div class="bg-slate-900/40 backdrop-blur-xl border border-white/10 rounded-3xl p-6 shadow-2xl flex items-center justify-between relative z-40">
 
                 <!-- Label Section -->
 
                 <div class="flex flex-col cursor-help group/info relative">
 
-                    <div class="flex items-center gap-2">
+                    <div class="flex items-center gap-3">
 
                         <span class="text-xs font-bold text-slate-300 uppercase tracking-[0.2em]">Include Ignored Files</span>
 
-                        <div class="w-4 h-4 rounded-full bg-slate-800 flex items-center justify-center text-[10px] text-slate-500 border border-slate-700">?</div>
+                        <!-- Question Mark -->
+
+                        <div class="w-5 h-5 rounded-full bg-slate-800 flex items-center justify-center text-[10px] text-slate-400 border border-slate-700 hover:bg-slate-700 hover:text-white transition-colors">?</div>
 
                     </div>
 
@@ -1216,19 +1218,19 @@
 
                     <!-- RESTORED TOOLTIP -->
 
-                    <div class="absolute bottom-full left-0 mb-3 w-64 bg-black/95 backdrop-blur-md border border-white/10 p-4 rounded-xl shadow-2xl opacity-0 group-hover/info:opacity-100 transition-opacity pointer-events-none z-50 text-[10px] text-slate-400 leading-relaxed translate-y-2 group-hover/info:translate-y-0 duration-200">
+                    <div class="absolute bottom-full left-0 mb-4 w-64 bg-black/95 backdrop-blur-md border border-white/10 p-4 rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.5)] opacity-0 group-hover/info:opacity-100 transition-all pointer-events-none z-[100] text-[10px] text-slate-400 leading-relaxed translate-y-2 group-hover/info:translate-y-0 duration-200">
 
                         <strong class="text-orange-400 block mb-1 uppercase tracking-wider">Tree Map Context</strong>
 
-                        When <strong>ON</strong>, ignored files (like <code class="text-slate-300">package-lock.json</code>) will appear in <code class="text-slate-300">Source-Tree.txt</code> to give the AI full context of your file structure, even if the file content itself is not exported.
+                        When <strong>ON</strong>, ignored files (like <code class="text-slate-300">package-lock.json</code>) will appear in <code class="text-slate-300">Source-Tree.txt</code>.
 
                         <br><br>
 
-                        <span class="text-slate-500 italic">Turn <strong>OFF</strong> to hide them for a cleaner tree.</span>
+                        This gives the AI context about your project structure without wasting tokens on the actual file content.
 
                         <!-- Arrow -->
 
-                        <div class="absolute top-full left-8 -mt-1 border-4 border-transparent border-t-black/95"></div>
+                        <div class="absolute top-full left-6 -mt-1 border-4 border-transparent border-t-black/95"></div>
 
                     </div>
 
@@ -1236,21 +1238,15 @@
 
 
 
-                <!-- Toggle Switch -->
+                <!-- Toggle Switch (Text Removed) -->
 
-                <label class="flex items-center gap-3 cursor-pointer group relative">
-
-                    <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500 group-hover:text-orange-200 transition-colors w-12 text-right">
-
-                        {includeIgnoredFiles ? 'Included' : 'Hidden'}
-
-                    </span>
+                <label class="flex items-center cursor-pointer relative">
 
                     <div class="relative">
 
                         <input type="checkbox" bind:checked={includeIgnoredFiles} class="sr-only peer">
 
-                        <div class="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-slate-400 after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600 peer-checked:after:bg-white"></div>
+                        <div class="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-slate-400 after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600 peer-checked:after:bg-white shadow-inner border border-white/5"></div>
 
                     </div>
 
