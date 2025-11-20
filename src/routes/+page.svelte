@@ -218,7 +218,9 @@
 
         }
 
-        loadFileTree();
+        // Update: Pass false to prevent loading screen flash
+
+        loadFileTree(false);
 
     }
 
@@ -238,7 +240,9 @@
 
                 selectedIds = targetIds;
 
-                loadFileTree();
+                // Update: Pass false to prevent loading screen flash
+
+                loadFileTree(false);
 
             }
 
@@ -308,9 +312,11 @@
 
     }
 
-    async function loadFileTree() {
+    // Update: Add showOverlay parameter with default 'true'
 
-        treeLoading = true;
+    async function loadFileTree(showOverlay: boolean = true) {
+
+        if (showOverlay) treeLoading = true;
 
         try {
 
@@ -406,7 +412,9 @@
 
         } finally {
 
-            treeLoading = false;
+            // Update: Only turn off if we turned it on
+
+            if (showOverlay) treeLoading = false;
 
         }
 
