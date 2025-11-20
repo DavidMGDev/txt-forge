@@ -389,3 +389,4 @@ poetry.lock
 # Local development
 .local
 .dev
+TXT-Forge/

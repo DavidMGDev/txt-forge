@@ -1,7 +1,9 @@
 <script lang="ts">
     import { onMount, onDestroy } from 'svelte';
     import { templates } from '$lib/templates';
-    import { fade, slide } from 'svelte/transition';
+    import { fade, slide, fly } from 'svelte/transition';
+    import { cubicOut } from 'svelte/easing'; // Import smoothing easing
+    import { flip } from 'svelte/animate';
 
     // --- STATE ---
     let isDetecting = $state(true);
@@ -12,20 +14,28 @@
 
     // Data
     let detectedIds: string[] = $state([]);
+    let detectionReasons: Record<string, string[]> = $state({});
+
+    // NEW: Granular Git Status
+    let gitStatus: 'none' | 'clean' | 'ignored' = $state('none');
+
     let selectedIds: string[] = $state([]);
     let maxChars = $state(75000);
     let customPath = $state('');
     let cwd = $state('');
 
-    // Results
-    let result: { success: boolean; outputPath: string; files: string[] } | null = $state(null);
+    // NEW: Session ID for safe shutdown
+    let sessionId = $state('');
+
+    // Toasts
+    let toasts = $state<{id: number, type: 'success' | 'error', title: string, message: string}[]>([]);
+    let toastCounter = 0;
 
     // --- COMPUTED ---
     let selectedTemplateObjects = $derived(templates.filter(t => selectedIds.includes(t.id)));
     let unselectedTemplateObjects = $derived(templates.filter(t => !selectedIds.includes(t.id)));
 
     // --- LOGIC ---
-
     onMount(async () => {
         await detect();
         window.addEventListener('beforeunload', handleUnload);
@@ -35,21 +45,38 @@
         if (typeof window !== 'undefined') window.removeEventListener('beforeunload', handleUnload);
     });
 
-    // Send kill signal to server
+    // FIX: Use fetch with keepalive instead of sendBeacon to fix JSON errors
     function handleUnload() {
-        navigator.sendBeacon('/api/shutdown');
+        if (!sessionId) return;
+
+        fetch('/api/shutdown', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sessionId }),
+            keepalive: true
+        });
     }
 
     async function detect() {
         try {
             const res = await fetch('/api/detect');
             const data = await res.json();
-            detectedIds = data.detected;
+            detectedIds = data.ids;
+            detectionReasons = data.reasons || {};
+
+            // Store the new Git Status
+            gitStatus = data.gitStatus;
+
             cwd = data.cwd;
-            // Default logic: Only select detected
+
+            // Capture the session ID passed from the server (We need to update detect endpoint to return this)
+            // See Step 4.1 below
+            sessionId = data.sessionId;
+
             selectedIds = [...detectedIds];
         } catch (e) {
             console.error(e);
+            addToast('error', 'Detection Failed', 'Could not scan directory.');
         } finally {
             isDetecting = false;
         }
@@ -65,11 +92,23 @@
 
     function toggleTemplatesSection() {
         templatesExpanded = !templatesExpanded;
-
-        // Logic: If user closes the manual selection, revert to auto-detected
         if (!templatesExpanded) {
             selectedIds = [...detectedIds];
         }
+    }
+
+    // FIX: Increased duration to 20 seconds
+    function addToast(type: 'success' | 'error', title: string, message: string) {
+        const id = toastCounter++;
+        toasts = [...toasts, { id, type, title, message }];
+        setTimeout(() => {
+            removeToast(id);
+        }, 20000);
+    }
+
+    // NEW: Manual close function
+    function removeToast(id: number) {
+        toasts = toasts.filter(t => t.id !== id);
     }
 
     async function runForge(mode: 'root' | 'global' | 'custom') {
@@ -79,8 +118,6 @@
         }
 
         isProcessing = true;
-        result = null;
-
         try {
             const res = await fetch('/api/forge', {
                 method: 'POST',
@@ -92,18 +129,25 @@
                     maxChars
                 })
             });
-            result = await res.json();
+            const result = await res.json();
+            if (result.success) {
+                addToast('success', 'Forging Complete!', `Saved to: ${result.outputPath}`);
 
-            // Auto-open folder on success
-            if (result && result.success) {
+                // If we successfully saved to root, update the git status visually immediately
+                if (mode === 'root' && gitStatus === 'clean') {
+                    gitStatus = 'ignored';
+                }
+
+                // Auto-open folder on success
                 await fetch('/api/open', {
                     method: 'POST',
                     body: JSON.stringify({ path: result.outputPath })
                 });
+            } else {
+                addToast('error', 'Forging Failed', result.message);
             }
-
         } catch (e) {
-            alert("Connection error");
+            addToast('error', 'Connection Error', 'Failed to communicate with server.');
         } finally {
             isProcessing = false;
             customPathOpen = false;
@@ -111,7 +155,31 @@
     }
 </script>
 
-<div class="min-h-screen flex flex-col items-center p-8 relative">
+<div class="min-h-screen flex flex-col items-center p-8 relative overflow-hidden">
+
+    <!-- TOAST NOTIFICATIONS (FIXED ANIMATION & POSITION) -->
+    <!-- Raised bottom position to bottom-24 -->
+    <div class="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 flex flex-col-reverse gap-3 w-full max-w-md pointer-events-none">
+        {#each toasts as toast (toast.id)}
+            <!-- Changed y to 100 (comes from lower), easing to cubicOut (smooth/linear feel) -->
+            <div animate:flip transition:fly={{ y: 100, duration: 400, easing: cubicOut }} class="pointer-events-auto shadow-2xl rounded-xl p-4 border backdrop-blur-xl flex gap-4 items-center relative group
+                {toast.type === 'success' ? 'bg-emerald-950/95 border-emerald-500/50 text-emerald-100 shadow-emerald-900/20' : 'bg-red-950/95 border-red-500/50 text-red-100 shadow-red-900/20'}">
+
+                <div class="text-2xl pl-1">
+                    {toast.type === 'success' ? '✓' : '✕'}
+                </div>
+                <div class="flex-1 pr-8"> <!-- Added padding right for text so it doesnt hit X button -->
+                    <div class="font-bold text-sm">{toast.title}</div>
+                    <div class="text-xs opacity-80 mt-1 leading-relaxed">{toast.message}</div>
+                </div>
+
+                <!-- Close Button (Enhanced hit area) -->
+                <button on:click={() => removeToast(toast.id)} class="absolute top-3 right-3 p-1 opacity-60 hover:opacity-100 transition-opacity hover:bg-white/10 rounded-md">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+        {/each}
+    </div>
 
     <!-- Header -->
     <div class="text-center mb-10 mt-8 animate-fade-in-up">
@@ -147,7 +215,6 @@
                             {/if}
                         </h2>
                     </div>
-
                     {#if templatesExpanded}
                         <button on:click={toggleTemplatesSection} class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1 rounded-lg transition-colors">
                             Reset to Auto
@@ -163,15 +230,32 @@
                 {#if selectedIds.length > 0}
                     <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
                         {#each selectedTemplateObjects as tmpl}
-                            <button
-                                on:click={() => toggleTemplate(tmpl.id)}
-                                class="group relative flex items-center gap-4 bg-indigo-900/20 hover:bg-indigo-500/20 border border-indigo-500/40 hover:border-indigo-400 text-white px-5 py-4 rounded-2xl transition-all duration-300 hover:shadow-[0_0_25px_rgba(99,102,241,0.25)] hover:-translate-y-0.5"
-                            >
-                                <!-- Added brightness-0 invert to make icons white -->
-                                <img src={tmpl.iconUrl} alt={tmpl.name} class="w-8 h-8 brightness-0 invert opacity-90 group-hover:opacity-100 transition-all group-hover:scale-110" />
-                                <span class="font-bold text-base tracking-wide">{tmpl.name}</span>
-                                <span class="absolute top-2 right-2 w-2 h-2 bg-indigo-400 rounded-full shadow-[0_0_8px_#818cf8]"></span>
-                            </button>
+                            <div class="group relative">
+                                <button
+                                    on:click={() => toggleTemplate(tmpl.id)}
+                                    class="w-full relative flex items-center gap-4 bg-indigo-900/20 hover:bg-indigo-500/20 border border-indigo-500/40 hover:border-indigo-400 text-white px-5 py-4 rounded-2xl transition-all duration-300 hover:shadow-[0_0_25px_rgba(99,102,241,0.25)] hover:-translate-y-0.5"
+                                >
+                                    <img src={tmpl.iconUrl} alt={tmpl.name} class="w-8 h-8 brightness-0 invert opacity-90 group-hover:opacity-100 transition-all group-hover:scale-110" />
+                                    <span class="font-bold text-base tracking-wide">{tmpl.name}</span>
+                                    <span class="absolute top-2 right-2 w-2 h-2 bg-indigo-400 rounded-full shadow-[0_0_8px_#818cf8]"></span>
+                                </button>
+
+                                <!-- REASON TOOLTIP (New Feature) -->
+                                {#if detectionReasons[tmpl.id] && detectionReasons[tmpl.id].length > 0}
+                                    <div class="absolute opacity-0 group-hover:opacity-100 transition-opacity duration-200 bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 z-20 pointer-events-none">
+                                        <div class="bg-black/90 border border-white/10 rounded-lg p-2 text-[10px] text-slate-300 shadow-xl backdrop-blur-md">
+                                            <div class="font-bold text-indigo-400 mb-1 border-b border-white/10 pb-1">Detected via:</div>
+                                            <ul class="list-disc pl-3 space-y-0.5">
+                                                {#each detectionReasons[tmpl.id] as reason}
+                                                    <li>{reason}</li>
+                                                {/each}
+                                            </ul>
+                                        </div>
+                                        <!-- Arrow -->
+                                        <div class="w-2 h-2 bg-black/90 border-r border-b border-white/10 absolute left-1/2 -translate-x-1/2 -bottom-1 rotate-45"></div>
+                                    </div>
+                                {/if}
+                            </div>
                         {/each}
                     </div>
                 {:else}
@@ -240,13 +324,30 @@
 
             <!-- ACTIONS -->
             <div class="grid gap-4">
+
+                <!-- Root Button with SMART GIT Logic -->
                 <button on:click={() => runForge('root')} disabled={isProcessing || selectedIds.length === 0}
                     class="group relative overflow-hidden p-6 rounded-3xl bg-slate-900 border border-slate-700 hover:border-indigo-500 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed shadow-xl hover:shadow-indigo-500/20 hover:-translate-y-1">
                     <div class="absolute inset-0 bg-gradient-to-r from-indigo-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
                     <div class="relative z-10">
-                        <div class="text-xl mb-2">📁</div>
-                        <div class="font-bold text-lg text-white">Project Root</div>
-                        <div class="text-xs text-slate-500 font-mono mt-1">./TXT-Forge</div>
+                        <div class="text-xl mb-2 flex items-center justify-between">
+                            <span>📁</span>
+                            {#if gitStatus !== 'none'}
+                                <span class="text-[10px] font-bold uppercase bg-slate-800 text-indigo-400 px-2 py-1 rounded">Git Detected</span>
+                            {/if}
+                        </div>
+                        <div class="font-bold text-lg text-white">
+                            {gitStatus !== 'none' ? "Save to Project Folder" : "Save to Current Folder"}
+                        </div>
+                        <div class="text-xs text-slate-500 font-mono mt-1">
+                            {#if gitStatus === 'ignored'}
+                                ✓ Safe: TXT-Forge is already ignored
+                            {:else if gitStatus === 'clean'}
+                                ⚠ Will add TXT-Forge to .gitignore
+                            {:else}
+                                ./TXT-Forge
+                            {/if}
+                        </div>
                     </div>
                 </button>
 
@@ -269,25 +370,12 @@
                         <div class="text-xs text-slate-500 font-mono mt-1">{customPath ? customPath : 'Select destination...'}</div>
                     </div>
                 </button>
-            </div>
-        </div>
-    </div>
 
-    <!-- SUCCESS OVERLAY / RESULT -->
-    {#if result}
-        <div transition:fade class="mt-8 w-full max-w-4xl bg-emerald-900/20 border border-emerald-500/30 rounded-3xl p-6 flex items-start gap-5 backdrop-blur-md shadow-[0_0_50px_rgba(16,185,129,0.1)]">
-            <div class="bg-emerald-500 rounded-full p-3 text-slate-900 shadow-lg shadow-emerald-500/50">✓</div>
-            <div class="flex-1">
-                <h3 class="text-lg font-bold text-emerald-400 mb-1">Forging Complete!</h3>
-                <p class="text-sm text-emerald-200/70 mb-4 font-mono">{result.outputPath}</p>
-                <div class="bg-slate-950/80 rounded-xl p-4 max-h-40 overflow-y-auto font-mono text-[11px] text-emerald-400/80 custom-scrollbar border border-white/5">
-                    {#each result.files as f}
-                        <div class="py-0.5 border-b border-white/5 last:border-0">📄 {f}</div>
-                    {/each}
-                </div>
             </div>
+
         </div>
-    {/if}
+
+    </div>
 
     <!-- CUSTOM PATH MODAL -->
     {#if customPathOpen}
@@ -318,6 +406,7 @@
     <div class="mt-auto pt-16 pb-8 text-center">
         <p class="text-[10px] text-slate-600 font-medium tracking-widest uppercase">TXT-FORGE v2.0 • Local Environment</p>
     </div>
+
 </div>
 
 <style>
