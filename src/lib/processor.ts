@@ -591,8 +591,8 @@ export async function processFiles(config: ProcessConfig): Promise<ProcessResult
 
         // 1. Setup Ignores
 
-        // ADDED: '.godot' to hard ignores
-        const ignorePatterns = new Set<string>(['.git', 'node_modules', '.godot', 'TXT-Forge', '.txt-forge-vault']);
+        // UPDATED: Added '*.import' to exclude Godot import files globally
+        const ignorePatterns = new Set<string>(['.git', 'node_modules', '.godot', 'TXT-Forge', '.txt-forge-vault', '*.import']);
 
         // ADDED: '.godot' to massive folders list
         const massiveFolders = new Set<string>(['node_modules', '.git', '.godot', '.svelte-kit', '.next', 'dist', 'build', 'vendor']); // Explicit massive folders
@@ -628,9 +628,15 @@ export async function processFiles(config: ProcessConfig): Promise<ProcessResult
         // 3. Determine Tree Files (The Visual Map)
         if (!config.hideIgnoredInTree) {
             // If "Hide" is FALSE (Default): We want the broad scan (show context).
-            // We scan everything, BUT we stop at massive folders.
+            // UPDATED: Pass 'true' for includeBinaries so .png, .wav etc appear in the tree map
             const massiveIgnores = Array.from(massiveFolders);
-            filesForTree = await scanFiles(sourceRoot, sourceRoot, [], massiveIgnores);
+            // We also ensure *.import is in massiveIgnores logic if not already implicitly handled,
+            // but better to concat the global ignorePatterns to be safe, or just rely on the fact that
+            // scanFiles checks ignores.
+            // To be safe for .import files in the tree, we add them to this specific call's ignore list:
+            massiveIgnores.push('*.import');
+
+            filesForTree = await scanFiles(sourceRoot, sourceRoot, [], massiveIgnores, true);
         } else {
             // If "Hide" is TRUE: Tree matches content exactly (clean tree).
             filesForTree = [...filesToProcess];
@@ -766,7 +772,8 @@ async function deepScanExtensions(dir: string, depth: number): Promise<Set<strin
     return extensions;
 }
 
-async function scanFiles(rootDir: string, currentDir: string, extensions: string[], ignores: string[]): Promise<string[]> {
+// UPDATED: Added includeBinaries parameter (default false)
+async function scanFiles(rootDir: string, currentDir: string, extensions: string[], ignores: string[], includeBinaries: boolean = false): Promise<string[]> {
     let results: string[] = [];
     const list = await fs.readdir(currentDir, { withFileTypes: true });
     for (const entry of list) {
@@ -788,11 +795,10 @@ async function scanFiles(rootDir: string, currentDir: string, extensions: string
         } else {
             const ext = path.extname(entry.name).toLowerCase();
 
-            // --- ADD THIS CHECK ---
-            if (BINARY_EXTENSIONS.has(ext)) {
+            // UPDATED: Only skip binaries if the flag is explicitly FALSE
+            if (!includeBinaries && BINARY_EXTENSIONS.has(ext)) {
                 continue;
             }
-            // ----------------------
 
             // UPDATED: If extensions list is empty, accept all
             if (extensions.length === 0 || extensions.includes(ext)) {
