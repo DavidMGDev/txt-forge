@@ -98,7 +98,7 @@
     onMount(async () => {
         // Only detect on mount. Tree load is now reactive.
         await detect();
-        isAppLoading = false; // Hide initial splash
+        // REMOVED: isAppLoading = false; (We wait for the tree now)
         window.addEventListener('beforeunload', handleUnload);
     });
 
@@ -263,6 +263,13 @@
             showErrorDialog = true;
         } finally {
             treeLoading = false;
+            // NEW: Only hide the loading screen after the tree has attempted to load
+            if (isAppLoading) {
+                // Small delay to ensure transition is smooth
+                setTimeout(() => {
+                    isAppLoading = false;
+                }, 500);
+            }
         }
     }
 
@@ -625,7 +632,7 @@
 
             <!-- SETTINGS CARD -->
             <div class="bg-slate-900/40 backdrop-blur-xl border border-white/10 rounded-3xl p-6 shadow-2xl relative overflow-hidden">
-                <div class="flex justify-between items-center">
+                <div class="flex justify-between items-center z-20 relative">
                     <div class="flex items-center gap-2 text-slate-300 text-sm font-bold tracking-wide">
                         <span>📐 SPLIT STRATEGY</span>
                     </div>
@@ -634,44 +641,54 @@
                     </button>
                 </div>
 
-                {#if settingsOpen}
-                    <div transition:fade class="mt-5 pt-5 border-t border-white/5">
-                        <label class="text-[10px] text-indigo-300 uppercase font-bold mb-3 block">Max Characters per File</label>
-                        <div class="flex gap-4 items-center">
-                            <input
-                                type="range" min="10000" max="200000" step="5000"
-                                bind:value={maxChars}
-                                class="flex-1 accent-indigo-500 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer"
-                            />
-                            <span class="font-mono text-white text-sm bg-indigo-600 px-3 py-1 rounded-lg shadow-lg">
-                                {(maxChars / 1000).toFixed(0)}k
-                            </span>
+                <!-- ANIMATION FIX: Use a Grid Stack to overlap transitions smoothly -->
+                <div class="grid grid-cols-1 grid-rows-1 mt-4">
+                    {#if settingsOpen}
+                        <div
+                            class="col-start-1 row-start-1 pt-1"
+                            transition:fade={{ duration: 200 }}
+                        >
+                            <label class="text-[10px] text-indigo-300 uppercase font-bold mb-3 block">Max Characters per File</label>
+                            <div class="flex gap-4 items-center">
+                                <input
+                                    type="range" min="10000" max="200000" step="5000"
+                                    bind:value={maxChars}
+                                    class="flex-1 accent-indigo-500 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer"
+                                />
+                                <span class="font-mono text-white text-sm bg-indigo-600 px-3 py-1 rounded-lg shadow-lg">
+                                    {(maxChars / 1000).toFixed(0)}k
+                                </span>
+                            </div>
                         </div>
-                    </div>
-                {:else}
-                     <div class="mt-3 text-xs text-slate-500 font-medium leading-relaxed">
-                        Files larger than <span class="text-indigo-400">{(maxChars/1000).toFixed(0)}k</span> chars will be smartly split at function boundaries.
-                     </div>
-                {/if}
+                    {:else}
+                         <div
+                            class="col-start-1 row-start-1"
+                            transition:fade={{ duration: 200 }}
+                        >
+                            <div class="text-xs text-slate-500 font-medium leading-relaxed">
+                                Files larger than <span class="text-indigo-400">{(maxChars/1000).toFixed(0)}k</span> chars will be smartly split at function boundaries.
+                             </div>
+                        </div>
+                    {/if}
+                </div>
             </div>
 
             <!-- ACTIONS -->
             <div class="grid gap-4">
 
-                <!-- 1. ROOT SAVE BUTTON -->
+                <!-- 1. SAVE TO PROJECT BUTTON -->
                 <button on:click={() => runForge('root')} disabled={isProcessing || selectedIds.length === 0}
                     class="group relative overflow-hidden min-h-[8rem] rounded-3xl bg-slate-900 border border-slate-700 hover:border-indigo-500 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed shadow-xl hover:shadow-indigo-500/20 hover:-translate-y-1 flex flex-col justify-center px-8 py-6">
 
-                    <!-- New Icon: Git Branch (Large, rotated, positioned better) -->
-                    <svg class="absolute -right-4 -bottom-6 w-40 h-40 text-indigo-500/5 group-hover:text-indigo-500/15 transition-colors -rotate-12 pointer-events-none" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-4.466 19.59c-.405.078-.534-.171-.534-.384v-1.337c0-1.392-.475-2.399-1.002-2.869 3.274-.365 6.714-1.621 6.714-7.352 0-1.614-.573-2.935-1.536-3.993.154-.396.666-1.927-.147-3.989 0 0-1.24-.396-4.059 1.514-1.174-.326-2.437-.489-3.688-.495-1.248.006-2.514.169-3.693.495-2.814-1.91-4.055-1.514-4.055-1.514-.815 2.062-.303 3.593-.15 3.989-.962 1.058-1.532 2.379-1.532 3.993 0 5.718 3.432 6.991 6.697 7.363-.429.371-.811 1.097-.953 2.119-1.188.534-4.215 1.627-5.056-1.416 0 0-.92-1.665-2.668-1.792 0 0-1.768-.024-.123 1.101 0 0 1.19 1.601 2.031 2.385.67 1.856 3.257 2.677 3.926 2.677v2.004c0 .216-.134.467-.54.381-3.078-1.025-5.288-3.932-5.288-7.318 0-4.286 3.474-7.761 7.761-7.761 4.283 0 7.757 3.475 7.757 7.761 0 3.386-2.214 6.293-5.289 7.318z"/>
+                    <!-- New Icon: Large Simple Download Arrow -->
+                    <svg class="absolute -right-5 -bottom-5 w-40 h-40 text-indigo-500/5 group-hover:text-indigo-500/15 transition-colors -rotate-12 pointer-events-none" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
                     </svg>
 
                     <div class="relative z-10">
                         <div class="flex items-center justify-between mb-2">
                             <div class="flex items-center gap-2">
                                 <div class="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center text-indigo-400 group-hover:scale-110 transition-transform shrink-0">
-                                    <!-- Small icon remains the same -->
                                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z"></path></svg>
                                 </div>
                                 {#if gitStatus !== 'none'}
@@ -681,7 +698,7 @@
                         </div>
 
                         <div class="font-bold text-lg text-white group-hover:text-indigo-200 transition-colors">
-                            {gitStatus !== 'none' ? "Save to Project" : "Save to Current Folder"}
+                            Save to Project
                         </div>
 
                         <div class="text-xs text-slate-500 font-mono mt-1 break-all pr-8">
@@ -696,11 +713,11 @@
                     </div>
                 </button>
 
-                <!-- 2. GLOBAL VAULT BUTTON -->
+                <!-- 2. SAVE TO GLOBAL VAULT BUTTON -->
                 <button on:click={() => runForge('global')} disabled={isProcessing || selectedIds.length === 0}
                     class="group relative overflow-hidden min-h-[8rem] rounded-3xl bg-slate-900 border border-slate-700 hover:border-cyan-500 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed shadow-xl hover:shadow-cyan-500/20 hover:-translate-y-1 flex flex-col justify-center px-8 py-6">
 
-                    <!-- New Icon: Safe/Shield/Vault (Large, positioned better) -->
+                    <!-- Icon: Safe/Shield/Vault -->
                     <svg class="absolute -right-8 -bottom-8 w-48 h-48 text-cyan-500/5 group-hover:text-cyan-500/15 transition-colors rotate-6 pointer-events-none" fill="currentColor" viewBox="0 0 24 24">
                          <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/>
                     </svg>
@@ -712,23 +729,22 @@
                             </div>
                         </div>
 
-                        <div class="font-bold text-lg text-white group-hover:text-cyan-200 transition-colors">Global Vault</div>
+                        <div class="font-bold text-lg text-white group-hover:text-cyan-200 transition-colors">Save to Global Vault</div>
 
-                        <!-- Full Path Subtitle with break-all -->
                         <div class="text-xs text-slate-500 font-mono mt-1 break-all pr-10 relative" title={globalVaultPath}>
                             {globalVaultPath || '~/.txt-forge-vault'}
                         </div>
                     </div>
                 </button>
 
-                <!-- 3. CUSTOM PATH BUTTON -->
+                <!-- 3. SAVE TO CUSTOM LOCATION BUTTON -->
                 <button
                     on:click={handleCustomClick}
                     disabled={isProcessing || selectedIds.length === 0}
                     class="group relative overflow-hidden min-h-[8rem] rounded-3xl bg-slate-900 border border-slate-700 hover:border-emerald-500 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed shadow-xl hover:shadow-emerald-500/20 hover:-translate-y-1 flex flex-col justify-center px-8 py-6"
                 >
 
-                    <!-- Kept this icon as you liked it -->
+                    <!-- Icon: Location/Target -->
                     <svg class="absolute -right-8 -bottom-8 w-44 h-44 text-emerald-500/5 group-hover:text-emerald-500/15 transition-colors rotate-6 pointer-events-none" fill="currentColor" viewBox="0 0 24 24">
                         <path d="M12 2c5.514 0 10 4.486 10 10s-4.486 10-10 10-10-4.486-10-10 4.486-10 10-10zm0-2c-6.627 0-12 5.373-12 12s5.373 12 12 12 12-5.373 12-12-5.373-12-12-12zm-1 6h2v8h-2v-8zm1 12.25c-.69 0-1.25-.56-1.25-1.25s.56-1.25 1.25-1.25 1.25.56 1.25 1.25-.56 1.25-1.25 1.25z"/>
                     </svg>
@@ -747,9 +763,8 @@
                             {/if}
                         </div>
 
-                        <div class="font-bold text-lg text-white group-hover:text-emerald-200 transition-colors">Custom Location</div>
+                        <div class="font-bold text-lg text-white group-hover:text-emerald-200 transition-colors">Save to Custom Location</div>
 
-                        <!-- Last Path Subtitle with break-all -->
                         <div class="text-xs text-slate-500 font-mono mt-1 break-all pr-6 relative" title={savedCustomPath}>
                             {savedCustomPath ? savedCustomPath : 'Click to browse folders...'}
                         </div>
