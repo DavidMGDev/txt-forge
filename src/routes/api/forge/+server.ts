@@ -10,7 +10,8 @@ export async function POST({ request }) {
         saveMode: body.saveMode,
         customPath: body.customPath,
         templateIds: body.templateIds,
-        maxChars: body.maxChars
+        maxChars: body.maxChars,
+        selectedFiles: body.selectedFiles // <--- PASS THIS
     });
 
     return json(result);

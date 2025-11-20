@@ -1,6 +1,7 @@
 <script lang="ts">
     import { onMount, onDestroy } from 'svelte';
     import { templates } from '$lib/templates';
+    import FileTreeNode from '$lib/components/FileTreeNode.svelte';
     import { fade, slide, fly } from 'svelte/transition';
     import { cubicOut } from 'svelte/easing'; // Import smoothing easing
     import { flip } from 'svelte/animate';
@@ -27,6 +28,36 @@
     // NEW: Session ID for safe shutdown
     let sessionId = $state('');
 
+    // TREE STATE
+    let treeNodes: any[] = $state([]);
+    let treeLoading = $state(false);
+    let treeExpanded = $state(false);
+    let selectedFilePaths: Set<string> = $state(new Set()); // Stores RELATIVE paths of checked items
+
+    // Determines if we are using "Manual Tree" mode or "Stack Detection" mode
+    // Logic: If the user touches the tree, we assume they want specific files.
+    // But for simplicity, let's make the Tree Panel *always* the source of truth if expanded,
+    // or we sync them.
+    // BETTER LOGIC: The tree starts with "Detected" files checked (if possible), but since we scan everything,
+    // let's keep it simple:
+    // 1. Detection finds templates.
+    // 2. User opens Tree.
+    // 3. Tree loads. Initially, we default to "Everything NOT ignored".
+    // 4. If Tree is visible, we send selectedFilePaths. If Tree is closed, we send selectedIds (templates).
+    let useTreeMode = $derived(treeExpanded); 
+
+    // Helper to recursively get all file paths from a node
+    function getAllFilePaths(node: any): string[] {
+        let paths: string[] = [];
+        if (node.type === 'file') paths.push(node.path);
+        if (node.children) {
+            node.children.forEach((child: any) => {
+                paths = paths.concat(getAllFilePaths(child));
+            });
+        }
+        return paths;
+    }
+
     // Toasts
     let toasts = $state<{id: number, type: 'success' | 'error', title: string, message: string}[]>([]);
     let toastCounter = 0;
@@ -35,9 +66,32 @@
     let selectedTemplateObjects = $derived(templates.filter(t => selectedIds.includes(t.id)));
     let unselectedTemplateObjects = $derived(templates.filter(t => !selectedIds.includes(t.id)));
 
+    // Count only selected files (not folders) for UI display
+    let selectedFileCount = $derived(() => {
+        return Array.from(selectedFilePaths).filter(path => {
+            // Find the node in treeNodes and check if it's a file
+            const findNode = (nodes: any[]): any => {
+                for (const node of nodes) {
+                    if (node.path === path) return node;
+                    if (node.children) {
+                        const found = findNode(node.children);
+                        if (found) return found;
+                    }
+                }
+                return null;
+            };
+            const node = findNode(treeNodes);
+            return node && node.type === 'file';
+        }).length;
+    });
+
     // --- LOGIC ---
     onMount(async () => {
-        await detect();
+        // Run detection and tree loading in parallel
+        await Promise.all([
+            detect(),
+            loadFileTree() // Call this immediately
+        ]);
         window.addEventListener('beforeunload', handleUnload);
     });
 
@@ -97,13 +151,13 @@
         }
     }
 
-    // FIX: Increased duration to 20 seconds
+    // UPDATE: 35 seconds duration
     function addToast(type: 'success' | 'error', title: string, message: string) {
         const id = toastCounter++;
         toasts = [...toasts, { id, type, title, message }];
         setTimeout(() => {
             removeToast(id);
-        }, 20000);
+        }, 35000);
     }
 
     // NEW: Manual close function
@@ -111,13 +165,95 @@
         toasts = toasts.filter(t => t.id !== id);
     }
 
+    async function loadFileTree() {
+        // If already loaded, don't fetch again
+        if (treeNodes.length > 0) return;
+
+        treeLoading = true;
+
+        try {
+            const res = await fetch('/api/tree');
+            const data = await res.json();
+            treeNodes = data.tree;
+
+            // Initialize Selection: Select everything that is NOT ignored
+            const initialSet = new Set<string>();
+
+            const traverseAndSelect = (nodes: any[]) => {
+                for (const node of nodes) {
+                    if (!node.isIgnored) {
+                        // If folder, we effectively select it by selecting its files
+                        if (node.type === 'folder') {
+                            initialSet.add(node.path);
+                            if (node.children) traverseAndSelect(node.children);
+                        } else {
+                            initialSet.add(node.path);
+                        }
+                    }
+                }
+            };
+
+            traverseAndSelect(treeNodes);
+            selectedFilePaths = initialSet;
+
+        } catch (e) {
+            addToast('error', 'Tree Scan Failed', 'Could not load file structure.');
+        } finally {
+            treeLoading = false;
+        }
+    }
+
+    // Handle toggling a node
+    function handleTreeToggle(path: string, isFolder: boolean, forcedState?: boolean) {
+        const newSet = new Set(selectedFilePaths);
+
+        // Helper to find node data
+        const findNode = (nodes: any[]): any => {
+            for (const node of nodes) {
+                if (node.path === path) return node;
+                if (node.children) {
+                    const found = findNode(node.children);
+                    if (found) return found;
+                }
+            }
+            return null;
+        };
+        const targetNode = findNode(treeNodes);
+        if (!targetNode) return;
+        const applyState = (node: any, state: boolean) => {
+            if (state) newSet.add(node.path);
+            else newSet.delete(node.path);
+
+            if (node.children) {
+                node.children.forEach((child: any) => applyState(child, state));
+            }
+        };
+        // If forcedState is provided, use it. Otherwise toggle.
+        const nextState = forcedState !== undefined ? forcedState : !newSet.has(path);
+        applyState(targetNode, nextState);
+
+        selectedFilePaths = newSet;
+    }
+
     async function runForge(mode: 'root' | 'global' | 'custom') {
         if (mode === 'custom' && !customPath) {
             customPathOpen = true;
             return;
         }
-
         isProcessing = true;
+
+        // PREPARE PAYLOAD
+        // If tree is expanded, we send specific files.
+        // Note: We only send FILE paths to backend, backend doesn't care about folder paths in the list
+        let payloadFiles: string[] | undefined = undefined;
+
+        if (treeExpanded) {
+            payloadFiles = Array.from(selectedFilePaths).filter(p => {
+                // Simple check: does it look like a file? (Logic handled better by verifying against tree data,
+                // but passing all paths is fine, backend checks existence)
+                return true;
+            });
+        }
         try {
             const res = await fetch('/api/forge', {
                 method: 'POST',
@@ -125,20 +261,17 @@
                 body: JSON.stringify({
                     saveMode: mode,
                     customPath,
-                    templateIds: selectedIds,
-                    maxChars
+                    templateIds: selectedIds, // Still send these for metadata if needed
+                    maxChars,
+                    selectedFiles: payloadFiles // <--- NEW
                 })
             });
+            // ... rest of existing logic ...
             const result = await res.json();
             if (result.success) {
                 addToast('success', 'Forging Complete!', `Saved to: ${result.outputPath}`);
+                // ...
 
-                // If we successfully saved to root, update the git status visually immediately
-                if (mode === 'root' && gitStatus === 'clean') {
-                    gitStatus = 'ignored';
-                }
-
-                // Auto-open folder on success
                 await fetch('/api/open', {
                     method: 'POST',
                     body: JSON.stringify({ path: result.outputPath })
@@ -157,12 +290,21 @@
 
 <div class="min-h-screen flex flex-col items-center p-8 relative overflow-hidden">
 
-    <!-- TOAST NOTIFICATIONS (FIXED ANIMATION & POSITION) -->
-    <!-- Raised bottom position to bottom-24 -->
-    <div class="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 flex flex-col-reverse gap-3 w-full max-w-md pointer-events-none">
+    <!-- AMBIENT BACKGROUND EFFECTS -->
+    <div class="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0">
+        <!-- Top glow following the logo -->
+        <div class="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-indigo-500/20 rounded-full blur-[100px] animate-blob mix-blend-screen"></div>
+        <!-- Secondary glow -->
+        <div class="absolute top-[10%] left-[20%] w-[400px] h-[400px] bg-purple-500/10 rounded-full blur-[80px] animate-blob animation-delay-2000 mix-blend-screen"></div>
+        <div class="absolute top-[10%] right-[20%] w-[400px] h-[400px] bg-cyan-500/10 rounded-full blur-[80px] animate-blob animation-delay-4000 mix-blend-screen"></div>
+    </div>
+
+    <!-- TOAST NOTIFICATIONS (UPDATED) -->
+    <!-- Added 'items-center' to wrapper to strictly center items horizontally -->
+    <div class="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 flex flex-col-reverse items-center gap-3 w-full max-w-md pointer-events-none">
         {#each toasts as toast (toast.id)}
             <!-- Changed y to 100 (comes from lower), easing to cubicOut (smooth/linear feel) -->
-            <div animate:flip transition:fly={{ y: 100, duration: 400, easing: cubicOut }} class="pointer-events-auto shadow-2xl rounded-xl p-4 border backdrop-blur-xl flex gap-4 items-center relative group
+            <div animate:flip transition:fly={{ y: 100, duration: 500, easing: cubicOut }} class="pointer-events-auto shadow-2xl rounded-xl p-4 border backdrop-blur-xl flex gap-4 items-center relative group w-full
                 {toast.type === 'success' ? 'bg-emerald-950/95 border-emerald-500/50 text-emerald-100 shadow-emerald-900/20' : 'bg-red-950/95 border-red-500/50 text-red-100 shadow-red-900/20'}">
 
                 <div class="text-2xl pl-1">
@@ -182,12 +324,16 @@
     </div>
 
     <!-- Header -->
-    <div class="text-center mb-10 mt-8 animate-fade-in-up">
-        <h1 class="text-7xl font-black tracking-tighter bg-gradient-to-r from-indigo-300 via-purple-300 to-cyan-300 bg-clip-text text-transparent mb-4 drop-shadow-[0_0_30px_rgba(99,102,241,0.4)]">
-            TXT-FORGE
+    <div class="text-center mb-10 mt-8 animate-fade-in-up relative z-10">
+        <h1 class="text-7xl font-black tracking-tighter mb-4 drop-shadow-[0_0_30px_rgba(99,102,241,0.3)]">
+            <span class="bg-gradient-to-r from-indigo-400 via-purple-400 to-cyan-400 bg-clip-text text-transparent animate-text-gradient bg-[length:200%_auto]">
+                TXT-FORGE
+            </span>
         </h1>
-        <div class="inline-flex items-center gap-2 bg-slate-900/80 px-4 py-2 rounded-full border border-white/10">
-            <span class="text-slate-500 text-xs uppercase font-bold tracking-widest">Target:</span>
+
+        <!-- Glass pill badge -->
+        <div class="inline-flex items-center gap-2 bg-slate-900/40 backdrop-blur-md px-4 py-2 rounded-full border border-white/10 shadow-lg">
+            <span class="text-slate-400 text-xs uppercase font-bold tracking-widest">Target:</span>
             <span class="text-indigo-300 font-mono text-xs truncate max-w-[300px]" title={cwd}>
                 {cwd || 'Loading...'}
             </span>
@@ -280,6 +426,72 @@
                                     {tmpl.name}
                                 </button>
                             {/each}
+                        </div>
+                    </div>
+                {/if}
+            </div>
+
+            <!-- 2. FILE TREE CARD -->
+            <div class="bg-slate-900/40 backdrop-blur-xl border border-white/10 rounded-3xl p-8 shadow-2xl flex flex-col gap-4 animate-fade-in-up relative overflow-hidden z-10" style="animation-delay: 0.15s;">
+                <!-- Glass reflection effect -->
+                <div class="absolute inset-0 bg-gradient-to-b from-white/5 to-transparent pointer-events-none"></div>
+
+                <div class="flex justify-between items-center relative z-10">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center border border-blue-500/20 text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.1)]">
+                            🌳
+                        </div>
+                        <div>
+                            <h2 class="text-sm font-bold text-white uppercase tracking-widest">Source Tree</h2>
+                            <div class="text-[10px] text-slate-500 font-mono">
+                                {treeExpanded
+                                    ? `${selectedFileCount} files selected`
+                                    : 'Standard Filter Mode'}
+                            </div>
+                        </div>
+                    </div>
+
+                    <button
+                        on:click={() => treeExpanded = !treeExpanded}
+                        class="px-4 py-2 rounded-xl text-xs font-bold transition-all border duration-300
+                        {treeExpanded
+                            ? 'bg-blue-600/20 text-blue-200 border-blue-500/50 shadow-[0_0_15px_rgba(59,130,246,0.3)]'
+                            : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700 hover:text-white'}"
+                    >
+                        {treeExpanded ? 'Close Tree' : 'Open Tree Browser'}
+                    </button>
+                </div>
+
+                <!-- PERFORMANCE FIX: CSS Grid Transition -->
+                <!-- We render this block if nodes exist, but toggle grid-rows to animate height -->
+                {#if treeNodes.length > 0 || treeLoading}
+                    <div class="grid transition-[grid-template-rows] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] {treeExpanded ? 'grid-rows-[1fr] border-t border-white/5 mt-2 pt-2' : 'grid-rows-[0fr] mt-0 pt-0'}">
+                        <div class="overflow-hidden">
+                            {#if treeLoading}
+                                <div class="py-8 text-center text-slate-500 flex flex-col items-center gap-3">
+                                    <div class="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                                    <span class="text-xs">Scanning entire codebase...</span>
+                                </div>
+                            {:else}
+                                <div class="bg-slate-950/50 rounded-xl border border-white/5 p-4 max-h-[500px] overflow-y-auto custom-scrollbar font-mono text-sm relative z-10 mt-2">
+                                    {#each treeNodes as node (node.path)}
+                                        <FileTreeNode
+                                            {node}
+                                            selectedPaths={selectedFilePaths}
+                                            onToggle={handleTreeToggle}
+                                        />
+                                    {/each}
+                                </div>
+
+                                <div class="mt-3 flex items-center gap-2 text-[10px] text-slate-500 bg-blue-900/10 p-3 rounded-lg border border-blue-500/10 relative z-10">
+                                    <span class="text-blue-400 text-lg">ℹ</span>
+                                    <p>
+                                        Items checked here will be <strong>merged exactly</strong> as seen.
+                                        Standard template filters are ignored when using the tree.
+                                        A <code class="bg-black/30 px-1 rounded text-blue-300">Source-Tree.txt</code> file will be generated.
+                                    </p>
+                                </div>
+                            {/if}
                         </div>
                     </div>
                 {/if}
