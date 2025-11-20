@@ -56,54 +56,65 @@ export async function scanDirectory(
         const fullPath = path.join(currentDir, entry.name);
         const relPath = path.relative(rootDir, fullPath);
 
-        // Check simple ignore logic
-        // Note: This is a simplified checker. Real gitignore logic is complex.
-        // We check if the name or path matches known system ignores or simple patterns.
+        // Normalize path to forward slashes for consistent gitignore comparison (Fixes Windows issues)
+        const normalizedRelPath = relPath.split(path.sep).join('/');
+        const isDirectory = entry.isDirectory();
+
+        // Check simple ignore logic (System files)
         let isIgnored = isSystemIgnored(entry.name);
 
-        // Check against accumulated patterns (Strict match)
+        // Check against accumulated patterns (Strict Git Logic)
         if (!isIgnored) {
              isIgnored = localIgnores.some(pattern => {
-                const p = pattern.trim();
+                let p = pattern.trim();
                 if (!p || p.startsWith('#')) return false;
 
-                // 1. Handle Wildcards (Simple end-match for extensions like *.log)
+                // 0. Handle Negation (Safety check: don't let ! patterns trigger ignores)
+                if (p.startsWith('!')) return false;
+
+                // Normalize pattern slashes
+                p = p.replace(/\\/g, '/');
+
+                // Handle directory-specific patterns (ending in /)
+                const isDirPattern = p.endsWith('/');
+                if (isDirPattern) {
+                    p = p.slice(0, -1);
+                    if (!isDirectory) return false; // Pattern expects dir, entry is file
+                }
+
+                // 1. Wildcards (e.g. *.log) - Simple suffix match
                 if (p.startsWith('*')) {
                     return entry.name.endsWith(p.slice(1));
                 }
 
-                // 2. Handle Rooted patterns (e.g. /node_modules)
+                // 2. Rooted Paths (e.g. /node_modules) - Matches from root of scan
                 if (p.startsWith('/')) {
-                    const clean = p.slice(1).replace(/\/$/, '');
-                    // Match exactly against the relative path from the scan root
-                    return relPath === clean || relPath.startsWith(clean + path.sep);
+                    const clean = p.slice(1);
+                    return normalizedRelPath === clean || normalizedRelPath.startsWith(clean + '/');
                 }
 
-                // 3. Handle Standard patterns (e.g. node_modules, dist)
-                // These should match if the FILE matches, or if it is INSIDE a matching folder
-                const clean = p.replace(/\/$/, '');
+                // 3. Standard Name Match (e.g. "node_modules" or "dist")
+                // Matches if the file/folder name is exactly the pattern
+                if (!p.includes('/')) {
+                    return entry.name === p;
+                }
 
-                // Exact name match (e.g. file is named "dist")
-                if (entry.name === clean) return true;
-
-                // Path segment match (e.g. file is inside "dist/output.txt")
-                // We split by separator to ensure we don't match "distinction" with "dist"
-                const segments = relPath.split(path.sep);
-                return segments.includes(clean);
+                // 4. Relative Path Match (e.g. "src/lib")
+                // Matches if the full relative path starts with or equals the pattern
+                return normalizedRelPath === p || normalizedRelPath.startsWith(p + '/');
              });
         }
 
         const node: TreeNode = {
             name: entry.name,
-            path: relPath,
-            type: entry.isDirectory() ? 'folder' : 'file',
+            path: relPath, // Keep original OS-specific path for file operations
+            type: isDirectory ? 'folder' : 'file',
             isIgnored: isIgnored,
             depth: depth
         };
 
-        if (entry.isDirectory()) {
+        if (isDirectory) {
             // Recursively scan
-            // We scan everything, but UI determines interactivity based on depth
             node.children = await scanDirectory(rootDir, fullPath, depth + 1, localIgnores);
         }
 
