@@ -107,10 +107,11 @@
     });
 
     // NEW: Reactive Tree Loader
-    // Whenever selectedIds changes, reload the tree to apply ignores
+    // Whenever selectedIds changes (or detection finishes), reload the tree
     $effect(() => {
-        // Simple debounce/check to ensure we have IDs (even empty list is valid)
-        if (!isDetecting && !isAppLoading) {
+        // FIX: Removed "!isAppLoading" from the check to prevent deadlock.
+        // We want the tree to load immediately after detection finishes.
+        if (!isDetecting) {
              loadFileTree();
         }
     });
@@ -225,6 +226,10 @@
     }
 
     async function loadFileTree() {
+        // Guard: If we are already loading, don't stack requests
+        // (Optional but good practice)
+        if (treeLoading && !isAppLoading) return;
+
         treeLoading = true;
 
         try {
