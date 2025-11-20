@@ -72,6 +72,35 @@
         return false;
     });
 
+    // NEW: Check if current settings differ from saved project config
+    let isConfigDirty = $derived.by(() => {
+        if (!projectConfig) return true; // No config saved yet
+
+        // 1. Max Chars
+        const savedMax = projectConfig.maxChars || 75000;
+        if (maxChars !== savedMax) return true;
+
+        // 2. Ignored Files Toggle (UI is 'include', Config is 'hide')
+        const configInclude = !projectConfig.hideIgnoredInTree;
+        if (includeIgnoredFiles !== configInclude) return true;
+
+        // 3. Templates
+        const currentTmpl = [...selectedIds].sort();
+        const savedTmpl = (projectConfig.templateIds || []).sort();
+        if (JSON.stringify(currentTmpl) !== JSON.stringify(savedTmpl)) return true;
+
+        // 4. Selected Files
+        // We compare the Set size and contents against the saved array
+        const savedFiles = projectConfig.selectedFiles || [];
+        if (selectedFilePaths.size !== savedFiles.length) return true;
+        // Quick check assuming savedFiles are valid paths
+        for (const f of savedFiles) {
+            if (!selectedFilePaths.has(f)) return true;
+        }
+
+        return false;
+    });
+
     // NEW: Cache map for instant toggling performance
     let folderDescendants = new Map<string, string[]>();
 
@@ -198,6 +227,10 @@
                 // Note: Config stores 'hide', UI uses 'include' (inverted)
                 if (projectConfig.hideIgnoredInTree !== undefined) {
                     includeIgnoredFiles = !projectConfig.hideIgnoredInTree;
+                }
+                // Load Max Chars
+                if (projectConfig.maxChars) {
+                    maxChars = projectConfig.maxChars;
                 }
             } else {
                 selectedIds = [...detectedIds];
@@ -717,7 +750,9 @@
 
             selectedFiles: Array.from(selectedFilePaths),
 
-            hideIgnoredInTree: !includeIgnoredFiles
+            hideIgnoredInTree: !includeIgnoredFiles,
+
+            maxChars: maxChars // <--- ADDED
 
         };
 
@@ -735,7 +770,9 @@
 
             });
 
-            // Visual feedback handled in button
+            // UPDATE LOCAL STATE so the button knows we are clean
+
+            projectConfig = config;
 
             return true;
 
@@ -963,29 +1000,37 @@
 
                         <button
 
+                            disabled={!isConfigDirty}
+
                             onclick={async (e) => {
 
-                                const btn = e.currentTarget;
+                                // If somehow clicked while disabled, do nothing
 
-                                const success = await saveCurrentConfig();
+                                if (!isConfigDirty) return;
 
-                                if(success) {
-
-                                    btn.innerHTML = '<span class="text-emerald-400">✓ Configuration Saved</span>';
-
-                                    btn.disabled = true;
-
-                                    btn.classList.add('bg-emerald-900/20', 'border-emerald-500/30');
-
-                                }
+                                await saveCurrentConfig();
 
                             }}
 
-                            class="text-[10px] font-bold uppercase tracking-wider py-2 px-4 rounded-lg border border-slate-800 bg-slate-900/50 text-slate-400 hover:text-white hover:bg-slate-800 hover:border-slate-600 transition-all"
+                            class="text-[10px] font-bold uppercase tracking-wider py-2 px-4 rounded-lg border transition-all
+
+                            {!isConfigDirty
+
+                                ? 'bg-emerald-900/20 border-emerald-500/30 text-slate-400 cursor-default'
+
+                                : 'border-slate-800 bg-slate-900/50 text-slate-400 hover:text-white hover:bg-slate-800 hover:border-slate-600 cursor-pointer'}"
 
                         >
 
-                            Save Project Configuration
+                            {#if !isConfigDirty}
+
+                                <span class="text-emerald-400">✓ Configuration Saved</span>
+
+                            {:else}
+
+                                Save Project Configuration
+
+                            {/if}
 
                         </button>
 
@@ -1463,7 +1508,7 @@
 
                                     id="maxCharsInput"
 
-                                    type="range" min="10000" max="200000" step="5000"
+                                    type="range" min="10000" max="600000" step="5000"
 
                                     bind:value={maxChars}
 

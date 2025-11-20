@@ -45,13 +45,15 @@ export async function POST({ request }) {
         finalHideIgnored = projectConfig.hideIgnoredInTree;
     }
 
+    const maxCharsToUse = (projectConfig && projectConfig.maxChars) ? projectConfig.maxChars : 75000; // <--- ADDED
+
     // 4. Process Files (The "Forge" step) using detected templates
     const result = await processFiles({
         sourceDir: cwd,
         saveMode: saveMode,
         customPath: customPath,
         templateIds: templatesToUse, // Use config or detected
-        maxChars: 75000,
+        maxChars: maxCharsToUse,     // <--- UPDATED
         selectedFiles: selectedFilesToUse, // Use config files or undefined
         hideIgnoredInTree: finalHideIgnored
     });
