@@ -4,10 +4,11 @@ export default {
   theme: {
     extend: {
       animation: {
-        // CHANGE: Synced both animations to 8s for a cohesive light bounce effect
-        'text-gradient': 'text-gradient 8s ease infinite',
-        'blob': 'blob 8s infinite',
+        // Slowed down for a massive cosmic feel
+        'text-gradient': 'text-gradient 15s ease infinite',
+        'blob': 'blob 20s infinite',
         'fade-in-up': 'fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+        'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
       },
       keyframes: {
         'text-gradient': {
@@ -25,10 +26,10 @@ export default {
             transform: 'translate(0px, 0px) scale(1)',
           },
           '33%': {
-            transform: 'translate(30px, -50px) scale(1.1)',
+            transform: 'translate(30px, -50px) scale(1.2)', // Larger breath
           },
           '66%': {
-            transform: 'translate(-20px, 20px) scale(0.9)',
+            transform: 'translate(-20px, 20px) scale(0.8)',
           },
           '100%': {
             transform: 'translate(0px, 0px) scale(1)',
