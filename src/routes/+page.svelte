@@ -836,7 +836,15 @@
 
     {#if (treeLoading || isProcessing) && !isAppLoading && !isDetecting && !isShuttingDown}
 
-        <div class="fixed inset-0 z-[150] bg-[#020617]/80 backdrop-blur-sm flex flex-col items-center justify-center transition-all duration-500">
+        <!-- CHANGED: Added transition:fade with 250ms duration, removed CSS transition classes -->
+
+        <div
+
+            class="fixed inset-0 z-[150] bg-[#020617]/80 backdrop-blur-sm flex flex-col items-center justify-center"
+
+            transition:fade={{ duration: 250 }}
+
+        >
 
             <div class="w-24 h-24 bg-black/50 rounded-full relative flex items-center justify-center border border-white/10 shadow-2xl">
 
