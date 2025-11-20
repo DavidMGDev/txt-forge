@@ -105,6 +105,30 @@ export async function detectCodebase(sourceDir: string): Promise<DetectionResult
         logDebug('Reading root directory...');
         const rootFiles = await fs.readdir(sourceDir);
 
+        // --- NEW: Parse package.json for accurate dependency detection ---
+        if (rootFiles.includes('package.json')) {
+            try {
+                const pkgPath = path.join(sourceDir, 'package.json');
+                const pkgContent = await fs.readFile(pkgPath, 'utf-8');
+                const pkg = JSON.parse(pkgContent);
+                const allDeps = { ...pkg.dependencies, ...pkg.devDependencies };
+
+                // Check dependencies against template IDs
+                for (const depName of Object.keys(allDeps)) {
+                    // Find a template where the ID matches the dependency (e.g., 'express', 'fastify', 'react')
+                    // OR specific mapping: 'react-dom' -> 'react', etc.
+                    const matchedTemplate = templates.find(t => t.id === depName);
+                    if (matchedTemplate) {
+                        detectedIds.add(matchedTemplate.id);
+                        reasons[matchedTemplate.id] = [`Dependency: ${depName}`];
+                    }
+                }
+            } catch (e) {
+                // Ignore JSON parse errors
+            }
+        }
+        // ---------------------------------------------------------------
+
         // Check for git and specifically .gitignore status
         if (rootFiles.includes('.git')) {
             if (rootFiles.includes('.gitignore')) {

@@ -426,7 +426,7 @@ export const templates: CodebaseTemplate[] = [
       ".eslintcache",
     ],
     iconUrl: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/react.svg",
-    triggers: ["package.json", "*.jsx", "*.tsx"],
+    triggers: ["*.jsx", "*.tsx"], // CHANGED: Removed package.json. Kept file extensions.
   },
   {
     id: "nextjs",
@@ -521,7 +521,7 @@ export const templates: CodebaseTemplate[] = [
     ],
     iconUrl:
       "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/express.svg",
-    triggers: ["package.json", "server.js", "index.js"],
+    triggers: [], // CHANGED: Empty triggers. Relies on 'express' dependency.
   },
   {
     id: "angular",
@@ -661,7 +661,7 @@ export const templates: CodebaseTemplate[] = [
     ],
     iconUrl:
       "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/fastify.svg",
-    triggers: ["package.json", "server.js"],
+    triggers: [], // CHANGED: Empty triggers. Relies on 'fastify' dependency.
   },
   {
     id: "koa",
@@ -676,7 +676,7 @@ export const templates: CodebaseTemplate[] = [
       "coverage/",
     ],
     iconUrl: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/koa.svg",
-    triggers: ["package.json", "index.js"],
+    triggers: [], // CHANGED: Empty triggers. Relies on 'koa' dependency.
   },
   {
     id: "meteorjs",
