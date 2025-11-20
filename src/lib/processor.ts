@@ -163,8 +163,10 @@ const FRAMEWORK_DEPENDENCIES: Record<string, string[]> = {
  * 1. Detect Codebase
  * Returns detected IDs, the files that triggered them, and git status.
  */
+/**
+ * 1. Detect Codebase (Content-Aware Mode)
+ */
 export async function detectCodebase(sourceDir: string): Promise<DetectionResult> {
-    // ADD THIS:
     logDebug(`Starting detection in: ${sourceDir}`);
 
     try {
@@ -172,120 +174,146 @@ export async function detectCodebase(sourceDir: string): Promise<DetectionResult
         const reasons: Record<string, string[]> = {};
         let gitStatus: 'none' | 'clean' | 'ignored' = 'none';
 
-        // 1. Scan environment
-        // ADD THIS:
-        logDebug('Reading root directory...');
+        // 1. Scan root files
         const rootFiles = await fs.readdir(sourceDir);
 
-        // --- NEW: Parse package.json for accurate dependency detection ---
-        if (rootFiles.includes('package.json')) {
+        // Check .gitignore status
+        if (rootFiles.includes('.git')) {
+            gitStatus = 'clean';
+            if (rootFiles.includes('.gitignore')) {
+                try {
+                    const content = await fs.readFile(path.join(sourceDir, '.gitignore'), 'utf-8');
+                    if (content.includes('TXT-Forge')) gitStatus = 'ignored';
+                } catch (e) {}
+            }
+        }
+
+        // 2. PRE-ANALYSIS: Check Package Managers (The Source of Truth)
+        let isManagedProject = false;
+
+        // --- A. Maven (Java/Spring/Kotlin) ---
+        if (rootFiles.includes('pom.xml')) {
+            isManagedProject = true;
             try {
-                const pkgPath = path.join(sourceDir, 'package.json');
-                const pkgContent = await fs.readFile(pkgPath, 'utf-8');
+                const pomContent = await fs.readFile(path.join(sourceDir, 'pom.xml'), 'utf-8');
+
+                // Check for Spring Boot
+                if (pomContent.includes('spring-boot') || pomContent.includes('springframework')) {
+                    detectedIds.add('spring-boot');
+                    reasons['spring-boot'] = ['Found Spring dependencies in pom.xml'];
+                    detectedIds.add('java'); // Spring implies Java usually
+                }
+
+                // Check for Kotlin
+                if (pomContent.includes('kotlin-stdlib') || pomContent.includes('kotlin-maven-plugin')) {
+                    detectedIds.add('kotlin');
+                    reasons['kotlin'] = ['Found Kotlin dependencies in pom.xml'];
+                } else {
+                    // If NO Kotlin dependency, we assume Java and explicitly preventing Kotlin guessing later
+                    detectedIds.add('java');
+                    reasons['java'] = ['Found pom.xml (Java Project)'];
+                }
+            } catch (e) { console.error("Error reading pom.xml", e); }
+        }
+
+        // --- B. Gradle (Android/Java/Spring) ---
+        const gradleFile = rootFiles.find(f => f === 'build.gradle' || f === 'build.gradle.kts');
+        if (gradleFile) {
+            isManagedProject = true;
+            try {
+                const gradleContent = await fs.readFile(path.join(sourceDir, gradleFile), 'utf-8');
+
+                if (gradleContent.includes('com.android.application') || gradleContent.includes('com.android.library')) {
+                    detectedIds.add('android');
+                    reasons['android'] = ['Found Android plugin in gradle'];
+                }
+
+                if (gradleContent.includes('org.springframework.boot')) {
+                    detectedIds.add('spring-boot');
+                    reasons['spring-boot'] = ['Found Spring Boot plugin'];
+                }
+
+                if (gradleContent.includes('kotlin')) {
+                    detectedIds.add('kotlin');
+                    reasons['kotlin'] = ['Found Kotlin plugin'];
+                }
+            } catch (e) {}
+        }
+
+        // --- C. Node (JS/TS Frameworks) ---
+        if (rootFiles.includes('package.json')) {
+            isManagedProject = true;
+            try {
+                const pkgContent = await fs.readFile(path.join(sourceDir, 'package.json'), 'utf-8');
                 const pkg = JSON.parse(pkgContent);
                 const allDeps = { ...pkg.dependencies, ...pkg.devDependencies };
 
-                // Check dependencies against template IDs
-                for (const depName of Object.keys(allDeps)) {
-                    // Find a template where the ID matches the dependency (e.g., 'express', 'fastify', 'react')
-                    // OR specific mapping: 'react-dom' -> 'react', etc.
-                    const matchedTemplate = templates.find(t => t.id === depName);
-                    if (matchedTemplate) {
-                        detectedIds.add(matchedTemplate.id);
-                        reasons[matchedTemplate.id] = [`Dependency: ${depName}`];
+                // Map dependencies to template IDs
+                for (const [dep, _] of Object.entries(allDeps)) {
+                    const t = templates.find(t => t.id === dep || t.id + 'js' === dep);
+                    if (t) {
+                        detectedIds.add(t.id);
+                        reasons[t.id] = [`Dependency: ${dep}`];
                     }
+
+                    // Specific Mappings
+                    if (dep === 'next') detectedIds.add('nextjs');
+                    if (dep === 'react-scripts') detectedIds.add('react');
+                    if (dep === '@nestjs/core') detectedIds.add('nestjs');
                 }
-            } catch (e) {
-                // Ignore JSON parse errors
-            }
-        }
-        // ---------------------------------------------------------------
 
-        // Check for git and specifically .gitignore status
-        if (rootFiles.includes('.git')) {
-            if (rootFiles.includes('.gitignore')) {
-                try {
-                    const gitIgnoreContent = await fs.readFile(path.join(sourceDir, '.gitignore'), 'utf-8');
-                    if (gitIgnoreContent.includes('TXT-Forge')) {
-                        gitStatus = 'ignored'; // Already has it
-                    } else {
-                        gitStatus = 'clean'; // Has .git, but needs update
-                    }
-                } catch (e) {
-                    gitStatus = 'clean'; // Fallback
-                }
-            } else {
-                gitStatus = 'clean'; // Has .git, needs .gitignore created
-            }
-        }
-
-        const foundExtensions = await deepScanExtensions(sourceDir, 4);
-
-        // 2. Iterate all templates
-        for (const t of templates) {
-            const foundTriggers: string[] = [];
-            let strongEvidenceFound = false;
-
-            // CHECK A: Unique Config Files (Triggers)
-            for (const trigger of t.triggers) {
-                if (GENERIC_TRIGGERS.has(trigger)) continue;
-
-                if (trigger.startsWith('*')) {
-                    const suffix = trigger.slice(1);
-                    const matches = rootFiles.filter(f => f.endsWith(suffix));
-                    if (matches.length > 0) {
-                        foundTriggers.push(...matches);
-                    }
+                // Detect Language
+                if (allDeps['typescript']) {
+                    detectedIds.add('typescript');
+                    reasons['typescript'] = ['Found typescript dependency'];
                 } else {
-                    if (rootFiles.includes(trigger)) {
-                        foundTriggers.push(trigger);
-                    }
+                    detectedIds.add('javascript');
                 }
-            }
-
-            if (foundTriggers.length > 0) {
-                strongEvidenceFound = true;
-            }
-
-            // CHECK B: Unique File Extensions
-            const isGenericLanguage = ['javascript', 'typescript', 'html-css', 'python', 'java', 'csharp', 'go', 'rust', 'php', 'ruby'].includes(t.id);
-
-            if (!strongEvidenceFound) {
-                const relevantExtensions = t.extensions.filter(ext => {
-                    if (isGenericLanguage) return true;
-                    return !GENERIC_EXTENSIONS.has(ext);
-                });
-
-                for (const ext of relevantExtensions) {
-                    if (foundExtensions.has(ext)) {
-                        strongEvidenceFound = true;
-                        if (!foundTriggers.includes(`*${ext} files`)) foundTriggers.push(`*${ext} files`);
-                    }
-                }
-            }
-
-            if (strongEvidenceFound) {
-                detectedIds.add(t.id);
-                reasons[t.id] = foundTriggers;
-            }
+            } catch (e) {}
         }
 
-        // 3. Dependency Inference
-        detectedIds.forEach(id => {
-            if (FRAMEWORK_DEPENDENCIES[id]) {
-                FRAMEWORK_DEPENDENCIES[id].forEach(dep => {
-                    if (!detectedIds.has(dep)) {
-                        detectedIds.add(dep);
-                        reasons[dep] = [`Implied by ${id}`];
-                    }
-                });
-            }
-        });
+        // 3. Deep Scan for Utilities (Docker, SQL, Shell, Configs)
+        // We allow these to coexist with any stack
+        const foundExtensions = await deepScanExtensions(sourceDir, 3);
 
-        // 4. Safety Fallback
-        if (rootFiles.includes('package.json') && !Array.from(detectedIds).some(id => ['react', 'vuejs', 'sveltekit', 'nextjs', 'angular', 'solidjs', 'qwik', 'astro'].includes(id))) {
-             if (foundExtensions.has('.ts')) { detectedIds.add('typescript'); reasons['typescript'] = ['Found .ts files']; }
-             if (foundExtensions.has('.js')) { detectedIds.add('javascript'); reasons['javascript'] = ['Found .js files']; }
+        if (rootFiles.includes('Dockerfile') || rootFiles.includes('docker-compose.yml')) {
+            detectedIds.add('docker');
+            reasons['docker'] = ['Docker config found'];
+        }
+
+        if (foundExtensions.has('.sql')) {
+            detectedIds.add('sql');
+            reasons['sql'] = ['SQL files found'];
+        }
+
+        if (foundExtensions.has('.sh')) {
+            detectedIds.add('bash-shell');
+            reasons['bash-shell'] = ['Shell scripts found'];
+        }
+
+        // 4. Fallback: Legacy Trigger Detection
+        // Only run if we haven't identified a specific framework via package manager,
+        // OR to catch items that don't use package managers (like Python/Go/Rust sometimes)
+
+        for (const t of templates) {
+            if (detectedIds.has(t.id)) continue; // Already found
+
+            // CRITICAL: If we identified a Managed Project (Maven/Gradle/Node),
+            // do NOT guess core languages (Java, Kotlin, Android, JS) based on random file existence.
+            if (isManagedProject) {
+                if (['java', 'kotlin', 'android', 'javascript', 'typescript'].includes(t.id)) continue;
+            }
+
+            // Check Triggers
+            const triggerMatch = t.triggers.some(trig => {
+                 if (trig.startsWith('*')) return false; // Skip suffix triggers for now
+                 return rootFiles.includes(trig);
+            });
+
+            if (triggerMatch) {
+                detectedIds.add(t.id);
+                reasons[t.id] = ['File trigger detected'];
+            }
         }
 
         return {

@@ -275,7 +275,9 @@ export const templates: CodebaseTemplate[] = [
     ignores: ["*.class", "build/", ".idea/", "*.iml", "out/", ".gradle/"],
     iconUrl:
       "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/kotlin.svg",
-    triggers: ["build.gradle.kts", "pom.xml"],
+    // FIXED: Removed 'pom.xml'. Kotlin must be detected via file content or .kt extensions now.
+
+    triggers: ["build.gradle.kts"],
   },
   {
     id: "swift",
