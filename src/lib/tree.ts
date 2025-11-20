@@ -1,12 +1,17 @@
 import fs from 'fs/promises';
 import path from 'path';
 
+// ADD THIS:
+import { logDebug } from '$lib/server/logger.js';
+
 export interface TreeNode {
     name: string;
     path: string; // Relative path from root
     type: 'file' | 'folder';
     children?: TreeNode[];
     isIgnored: boolean; // True if matched by .gitignore or system hidden
+    // ADD THIS:
+    isMedia: boolean;
     depth: number;
 }
 
@@ -24,6 +29,16 @@ const SYSTEM_HIDDEN = [
     'bun.lockb'
 ];
 
+// ADD THIS LIST:
+
+const MEDIA_EXTENSIONS = new Set([
+    '.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.svg', '.bmp', '.tiff',
+    '.mp3', '.wav', '.ogg', '.mp4', '.webm', '.mov', '.avi',
+    '.pdf', '.zip', '.tar', '.gz', '.7z', '.rar',
+    '.exe', '.dll', '.so', '.dylib', '.bin',
+    '.ttf', '.otf', '.woff', '.woff2', '.eot'
+]);
+
 /**
  * specific ignore logic for the tree view (lighter than the full processor)
  */
@@ -37,6 +52,9 @@ export async function scanDirectory(
     depth: number = 0,
     additionalIgnores: string[] = [] // <--- NEW PARAMETER
 ): Promise<TreeNode[]> {
+    // ADD THIS LOG:
+    logDebug(`Scanning directory: ${currentDir}`);
+
     const nodes: TreeNode[] = [];
 
     let entries: import('fs').Dirent[] = [];
@@ -118,11 +136,20 @@ export async function scanDirectory(
              });
         }
 
+        // --- DETECT MEDIA ---
+
+        const ext = path.extname(entry.name).toLowerCase();
+
+        const isMedia = !isDirectory && MEDIA_EXTENSIONS.has(ext);
+
+        // --------------------
+
         const node: TreeNode = {
             name: entry.name,
             path: relPath, // Keep original OS-specific path for file operations
             type: isDirectory ? 'folder' : 'file',
             isIgnored: isIgnored,
+            isMedia: isMedia, // <--- SET PROPERTY
             depth: depth
         };
 

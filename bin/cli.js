@@ -14,8 +14,18 @@ const USER_CWD = process.cwd();
 const PORT = 4567;
 const SESSION_ID = randomUUID();
 
+// --- NEW: Check for Debug Flag ---
+
+const args = process.argv.slice(2);
+
+const isDebug = args.includes('--debug') || args.includes('-d');
+
+// --------------------------------
+
 // Calm initialization message
 console.log('\x1b[36m%s\x1b[0m', '› Initializing TXT-Forge...');
+
+if (isDebug) console.log('\x1b[33m%s\x1b[0m', '› Debug Mode Enabled');
 
 async function killPort(port) {
     return new Promise((resolve) => {
@@ -56,7 +66,9 @@ async function startServer() {
             FORGE_SESSION_ID: SESSION_ID,
             // Tell SvelteKit adapter-node to be quiet about the listening port
             // We will handle the "Ready" message ourselves
-            node_env: 'production'
+            node_env: 'production',
+            // --- NEW: Pass Debug Env ---
+            TXT_FORGE_DEBUG: isDebug ? 'true' : 'false'
         },
         stdio: 'inherit'
     });

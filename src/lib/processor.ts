@@ -3,6 +3,9 @@ import path from 'path';
 import os from 'os';
 import { templates, type CodebaseTemplate } from '$lib/templates';
 
+// ADD THIS:
+import { logDebug } from '$lib/server/logger.js';
+
 export type SaveMode = 'root' | 'global' | 'custom';
 
 export interface ProcessConfig {
@@ -72,12 +75,17 @@ const FRAMEWORK_DEPENDENCIES: Record<string, string[]> = {
  * Returns detected IDs, the files that triggered them, and git status.
  */
 export async function detectCodebase(sourceDir: string): Promise<DetectionResult> {
+    // ADD THIS:
+    logDebug(`Starting detection in: ${sourceDir}`);
+
     try {
         const detectedIds = new Set<string>();
         const reasons: Record<string, string[]> = {};
         let gitStatus: 'none' | 'clean' | 'ignored' = 'none';
 
         // 1. Scan environment
+        // ADD THIS:
+        logDebug('Reading root directory...');
         const rootFiles = await fs.readdir(sourceDir);
 
         // Check for git and specifically .gitignore status
@@ -343,7 +351,10 @@ async function deepScanExtensions(dir: string, depth: number): Promise<Set<strin
                 if (ext) extensions.add(ext);
             }
         }
-    } catch (e) { /* ignore access errors */ }
+    } catch (e) {
+        // ADD THIS:
+        logDebug(`Error scanning dir ${dir}:`, e);
+    }
 
     return extensions;
 }

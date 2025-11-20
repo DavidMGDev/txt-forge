@@ -341,11 +341,17 @@
 
                     // Logic for initial selection: Only add if NOT effectively ignored
 
-                    if (!isEffectivelyIgnored) {
+                    // --- UPDATED LOGIC HERE: ---
+
+                    // We verify it is not media before adding it to the initial selection
+
+                    if (!isEffectivelyIgnored && !node.isMedia) {
 
                         initialSet.add(node.path);
 
                     }
+
+                    // ---------------------------
 
 
 
@@ -956,6 +962,8 @@
                                         {node}
 
                                         selectedPaths={selectedFilePaths}
+
+                                        {folderDescendants}
 
                                         onToggle={handleTreeToggle}
 
