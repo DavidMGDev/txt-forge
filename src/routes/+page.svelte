@@ -2,34 +2,24 @@
     import { onMount, onDestroy } from 'svelte';
     import { templates } from '$lib/templates';
     import FileTreeNode from '$lib/components/FileTreeNode.svelte';
-    import { fade, slide, fly } from 'svelte/transition';
-    import { cubicOut } from 'svelte/easing'; // Import smoothing easing
-    import { flip } from 'svelte/animate';
+    import { fade, slide } from 'svelte/transition'; // Removed unused 'fly', 'flip', 'cubicOut'
 
     // --- STATE ---
     let isDetecting = $state(true);
     let isProcessing = $state(false);
-    // NEW: Explicit loading state for initial load
-    let isAppLoading = $state(true);
+    let isAppLoading = $state(true); // Keeps the splash screen up
     let settingsOpen = $state(false);
     let templatesExpanded = $state(false);
 
     // Data
     let detectedIds: string[] = $state([]);
     let detectionReasons: Record<string, string[]> = $state({});
-
-    // NEW: Granular Git Status
     let gitStatus: 'none' | 'clean' | 'ignored' = $state('none');
-
     let selectedIds: string[] = $state([]);
     let maxChars = $state(75000);
     let customPath = $state('');
     let cwd = $state('');
-
-    // NEW: Session ID for safe shutdown
     let sessionId = $state('');
-
-    // UPDATE: Add these new state variables
     let savedCustomPath = $state('');
     let globalVaultPath = $state('');
 
@@ -37,18 +27,12 @@
     let treeNodes: any[] = $state([]);
     let treeLoading = $state(false);
     let treeExpanded = $state(false);
-    let selectedFilePaths: Set<string> = $state(new Set()); // Stores RELATIVE paths of checked items
+    let selectedFilePaths: Set<string> = $state(new Set());
 
-    // Determines if we are using "Manual Tree" mode or "Stack Detection" mode
-    // Logic: If the user touches the tree, we assume they want specific files.
-    // But for simplicity, let's make the Tree Panel *always* the source of truth if expanded,
-    // or we sync them.
-    // BETTER LOGIC: The tree starts with "Detected" files checked (if possible), but since we scan everything,
-    // let's keep it simple:
-    // 1. Detection finds templates.
-    // 2. User opens Tree.
-    // 3. Tree loads. Initially, we default to "Everything NOT ignored".
-    // 4. If Tree is visible, we send selectedFilePaths. If Tree is closed, we send selectedIds (templates).
+    // PERFORMANCE OPTIMIZATION: Fast lookup map for file types
+    // Maps relative path -> 'file' | 'folder'
+    let fileTypeMap = new Map<string, 'file' | 'folder'>();
+
     let useTreeMode = $derived(treeExpanded); 
 
     // Helper to recursively get all file paths from a node
@@ -74,31 +58,28 @@
     let selectedTemplateObjects = $derived(templates.filter(t => selectedIds.includes(t.id)));
     let unselectedTemplateObjects = $derived(templates.filter(t => !selectedIds.includes(t.id)));
 
-    // Count only selected files (not folders) for UI display
-    // CHANGE: Used $derived.by to execute the function immediately and get the return value
+    // OPTIMIZED COUNTING: Use the HashMap instead of recursive tree search
     let selectedFileCount = $derived.by(() => {
-        return Array.from(selectedFilePaths).filter(path => {
-            // Find the node in treeNodes and check if it's a file
-            const findNode = (nodes: any[]): any => {
-                for (const node of nodes) {
-                    if (node.path === path) return node;
-                    if (node.children) {
-                        const found = findNode(node.children);
-                        if (found) return found;
-                    }
-                }
-                return null;
-            };
-            const node = findNode(treeNodes);
-            return node && node.type === 'file';
-        }).length;
+        let count = 0;
+        for (const path of selectedFilePaths) {
+            if (fileTypeMap.get(path) === 'file') {
+                count++;
+            }
+        }
+        return count;
     });
 
     // --- LOGIC ---
     onMount(async () => {
-        // Only detect on mount. Tree load is now reactive.
+        // SEQUENCE: Detect -> Load Tree -> Hide Loading Screen
+        // This ensures the tree is ready before the user sees the UI.
         await detect();
-        // REMOVED: isAppLoading = false; (We wait for the tree now)
+        await loadFileTree(); // This is now part of the initial block
+
+        // Add a tiny buffer to allow the DOM to paint the hidden tree
+        setTimeout(() => {
+            isAppLoading = false;
+        }, 100);
         window.addEventListener('beforeunload', handleUnload);
     });
 
@@ -106,15 +87,9 @@
         if (typeof window !== 'undefined') window.removeEventListener('beforeunload', handleUnload);
     });
 
-    // NEW: Reactive Tree Loader
-    // Whenever selectedIds changes (or detection finishes), reload the tree
-    $effect(() => {
-        // FIX: Removed "!isAppLoading" from the check to prevent deadlock.
-        // We want the tree to load immediately after detection finishes.
-        if (!isDetecting) {
-             loadFileTree();
-        }
-    });
+    // REMOVED: The $effect(() => { loadFileTree() }) block.
+    // We only load the tree once on startup or manually.
+    // Reacting to every template change causes unnecessary re-fetches.
 
     // FIX: Use fetch with keepalive instead of sendBeacon to fix JSON errors
     function handleUnload() {
@@ -198,12 +173,16 @@
         } else {
             selectedIds = [...selectedIds, id];
         }
+        // RELOAD TREE ON CHANGE to update ignores
+        // Debounce this manually if needed, but calling it here is safer than $effect
+        loadFileTree();
     }
 
     function toggleTemplatesSection() {
         templatesExpanded = !templatesExpanded;
         if (!templatesExpanded) {
             selectedIds = [...detectedIds];
+            loadFileTree();
         }
     }
 
@@ -226,40 +205,35 @@
     }
 
     async function loadFileTree() {
-        // Guard: If we are already loading, don't stack requests
-        // (Optional but good practice)
-        if (treeLoading && !isAppLoading) return;
-
         treeLoading = true;
-
         try {
-            // Pass active templates to backend
             const params = new URLSearchParams();
-            if (selectedIds.length > 0) {
-                params.append('templates', selectedIds.join(','));
-            }
+            if (selectedIds.length > 0) params.append('templates', selectedIds.join(','));
+
             const res = await fetch(`/api/tree?${params.toString()}`);
             const data = await res.json();
             treeNodes = data.tree;
 
-            // Initialize Selection: Select everything that is NOT ignored
+            // 1. Build the fast lookup map
+            // 2. Calculate initial selection
+            fileTypeMap.clear();
             const initialSet = new Set<string>();
-
-            const traverseAndSelect = (nodes: any[]) => {
+            const processNode = (nodes: any[]) => {
                 for (const node of nodes) {
+                    // Populate Map
+                    fileTypeMap.set(node.path, node.type);
+                    // Handle Selection logic
                     if (!node.isIgnored) {
-                        // If folder, we effectively select it by selecting its files
                         if (node.type === 'folder') {
                             initialSet.add(node.path);
-                            if (node.children) traverseAndSelect(node.children);
+                            if (node.children) processNode(node.children);
                         } else {
                             initialSet.add(node.path);
                         }
                     }
                 }
             };
-
-            traverseAndSelect(treeNodes);
+            processNode(treeNodes);
             selectedFilePaths = initialSet;
 
         } catch (e) {
@@ -268,13 +242,6 @@
             showErrorDialog = true;
         } finally {
             treeLoading = false;
-            // NEW: Only hide the loading screen after the tree has attempted to load
-            if (isAppLoading) {
-                // Small delay to ensure transition is smooth
-                setTimeout(() => {
-                    isAppLoading = false;
-                }, 500);
-            }
         }
     }
 
@@ -646,8 +613,8 @@
                     </button>
                 </div>
 
-                <!-- ANIMATION FIX: Use a Grid Stack to overlap transitions smoothly -->
-                <div class="grid grid-cols-1 grid-rows-1 mt-4">
+                <!-- ANIMATION FIX: Smooth Crossfade -->
+                <div class="grid grid-cols-1 grid-rows-1 mt-4 min-h-[40px]">
                     {#if settingsOpen}
                         <div
                             class="col-start-1 row-start-1 pt-1"
