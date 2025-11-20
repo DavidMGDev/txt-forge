@@ -23,6 +23,78 @@ const BINARY_EXTENSIONS = new Set([
 
 export type SaveMode = 'root' | 'global' | 'custom';
 
+// --- HELPER FUNCTIONS ---
+
+async function analyzeMaven(dir: string, ids: Set<string>, reasons: Record<string, string[]>) {
+    try {
+        const content = await fs.readFile(path.join(dir, 'pom.xml'), 'utf-8');
+
+        // Check Spring Boot
+        if (content.includes('spring-boot-starter')) {
+            ids.add('spring-boot');
+            reasons['spring-boot'] = ['Found spring-boot-starter in pom.xml'];
+            ids.add('java');
+        }
+
+        // Check Kotlin
+        if (content.includes('kotlin-stdlib')) {
+            ids.add('kotlin');
+            reasons['kotlin'] = ['Found kotlin-stdlib in pom.xml'];
+        } else {
+            ids.add('java'); // Default to Java if no Kotlin explicitly defined
+        }
+    } catch (e) {}
+}
+
+async function analyzeGradle(dir: string, ids: Set<string>, reasons: Record<string, string[]>) {
+    try {
+        const filename = (await fs.readdir(dir)).find(f => f.startsWith('build.gradle'));
+        if (!filename) return;
+        const content = await fs.readFile(path.join(dir, filename), 'utf-8');
+
+        // Check Android
+        if (content.includes('com.android.application') || content.includes('com.android.library')) {
+            ids.add('android');
+            reasons['android'] = ['Found Android plugin in gradle'];
+        }
+
+        // Check Spring
+        if (content.includes('org.springframework.boot')) {
+            ids.add('spring-boot');
+            reasons['spring-boot'] = ['Found Spring Boot plugin'];
+        }
+
+        // Check Kotlin
+        if (content.includes('kotlin("jvm")') || content.includes('kotlin-stdlib')) {
+            ids.add('kotlin');
+            reasons['kotlin'] = ['Found Kotlin plugin'];
+        } else {
+             // If strictly Android, it might be Java or Kotlin.
+             // We let extension scanner confirm Java if Kotlin isn't explicit here.
+        }
+    } catch (e) {}
+}
+
+async function analyzeNode(dir: string, ids: Set<string>, reasons: Record<string, string[]>) {
+    try {
+        const content = await fs.readFile(path.join(dir, 'package.json'), 'utf-8');
+        const pkg = JSON.parse(content);
+        const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+
+        for (const [key, _] of Object.entries(deps)) {
+             const tmpl = templates.find(t => t.id === key); // e.g. 'react', 'vue', 'express'
+             if (tmpl) {
+                 ids.add(tmpl.id);
+                 reasons[tmpl.id] = [`Dependency: ${key}`];
+             }
+
+             // Manual mappings
+             if (key.includes('react-scripts')) ids.add('react');
+             if (key.includes('next')) ids.add('nextjs');
+        }
+    } catch (e) {}
+}
+
 export interface ProcessConfig {
     sourceDir: string;
     saveMode: SaveMode;

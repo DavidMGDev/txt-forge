@@ -790,7 +790,9 @@ export const templates: CodebaseTemplate[] = [
       "*.aab"
     ],
     iconUrl: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/android.svg",
-    triggers: ["AndroidManifest.xml", "app/build.gradle.kts", "app/build.gradle", "local.properties"],
+    // CHANGED: Removed generic triggers like 'local.properties' or 'gradlew'
+    // Only trigger on the specific Manifest file which is unique to Android
+    triggers: ["AndroidManifest.xml"],
   },
   {
     id: "react-native",
