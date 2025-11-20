@@ -58,6 +58,18 @@
 
     let selectedFilePaths: Set<string> = $state(new Set());
 
+    // NEW: Store the default state for reset capability
+    let defaultFilePaths: Set<string> = $state(new Set());
+
+    // NEW: Check if current selection differs from default
+    let isTreeModified = $derived.by(() => {
+        if (selectedFilePaths.size !== defaultFilePaths.size) return true;
+        for (const path of selectedFilePaths) {
+            if (!defaultFilePaths.has(path)) return true;
+        }
+        return false;
+    });
+
     // NEW: Cache map for instant toggling performance
     let folderDescendants = new Map<string, string[]>();
 
@@ -221,6 +233,12 @@
         // Update: Pass false to prevent loading screen flash
 
         loadFileTree(false);
+
+    }
+
+    function resetTreeSelection() {
+
+        selectedFilePaths = new Set(defaultFilePaths);
 
     }
 
@@ -400,7 +418,11 @@
 
             processNode(treeNodes, false);
 
+            // NEW: Set both the current selection AND the default baseline
+
             selectedFilePaths = initialSet;
+
+            defaultFilePaths = new Set(initialSet); // Clone it
 
         } catch (e) {
 
@@ -563,6 +585,16 @@
                              // Force reactivity
 
                              selectedFilePaths = new Set(selectedFilePaths);
+
+                        }
+
+                        // 2. NEW: Update Default Baseline (Sync with parent's default state)
+
+                        if (defaultFilePaths.has(folderPath) && !isEffectivelyIgnored && !node.isMedia) {
+
+                             defaultFilePaths.add(node.path);
+
+                             defaultFilePaths = new Set(defaultFilePaths); // Reactivity
 
                         }
 
@@ -1128,23 +1160,51 @@
                     </div>
 
 
-                    <button
+                    <!-- Right Side Actions -->
 
-                        onclick={scrollToTree}
+                    <div class="flex items-center gap-3">
 
-                        class="px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all border duration-300
 
-                        {treeExpanded
 
-                            ? 'bg-orange-900/20 text-orange-200 border-orange-500/30 shadow-[0_0_15px_rgba(249,115,22,0.2)]'
+                        {#if isTreeModified}
 
-                            : 'bg-slate-900 text-slate-500 border-slate-800 hover:bg-slate-800 hover:text-white'}"
+                            <button
 
-                    >
+                                onclick={resetTreeSelection}
 
-                        {treeExpanded ? 'Close Tree' : 'Open Tree Browser'}
+                                class="text-[10px] font-bold uppercase tracking-wider text-slate-500 hover:text-orange-400 transition-colors flex items-center gap-1 animate-fade-in-up"
 
-                    </button>
+                                title="Reset selection to auto-detected defaults"
+
+                            >
+
+                                <span class="text-lg leading-none">↺</span> Reset
+
+                            </button>
+
+                        {/if}
+
+
+
+                        <button
+
+                            onclick={scrollToTree}
+
+                            class="px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all border duration-300
+
+                            {treeExpanded
+
+                                ? 'bg-orange-900/20 text-orange-200 border-orange-500/30 shadow-[0_0_15px_rgba(249,115,22,0.2)]'
+
+                                : 'bg-slate-900 text-slate-500 border-slate-800 hover:bg-slate-800 hover:text-white'}"
+
+                        >
+
+                            {treeExpanded ? 'Close Tree' : 'Open Tree Browser'}
+
+                        </button>
+
+                    </div>
 
                 </div>
 
