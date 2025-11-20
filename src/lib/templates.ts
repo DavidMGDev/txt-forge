@@ -828,6 +828,11 @@ export const universalGitignorePatterns = [
   "# Miscellaneous",
   ".directory",
   ".netrc",
+  "*.svg",
+  "*.mp4",
+  "*.mp3",
+  "*.jpg",
+  "*.png",
 ];
 
 /**
