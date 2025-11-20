@@ -58,16 +58,20 @@
         return paths;
     }
 
-    // Toasts
-    let toasts = $state<{id: number, type: 'success' | 'error', title: string, message: string}[]>([]);
-    let toastCounter = 0;
+    // Dialog State
+    let showSuccessDialog = $state(false);
+    let showErrorDialog = $state(false);
+    let dialogTitle = $state('');
+    let dialogMessage = $state('');
+    let successOutputPath = $state('');
 
     // --- COMPUTED ---
     let selectedTemplateObjects = $derived(templates.filter(t => selectedIds.includes(t.id)));
     let unselectedTemplateObjects = $derived(templates.filter(t => !selectedIds.includes(t.id)));
 
     // Count only selected files (not folders) for UI display
-    let selectedFileCount = $derived(() => {
+    // CHANGE: Used $derived.by to execute the function immediately and get the return value
+    let selectedFileCount = $derived.by(() => {
         return Array.from(selectedFilePaths).filter(path => {
             // Find the node in treeNodes and check if it's a file
             const findNode = (nodes: any[]): any => {
@@ -130,7 +134,9 @@
             selectedIds = [...detectedIds];
         } catch (e) {
             console.error(e);
-            addToast('error', 'Detection Failed', 'Could not scan directory.');
+            dialogTitle = 'Detection Failed';
+            dialogMessage = 'Could not scan directory. Please ensure the server is running correctly.';
+            showErrorDialog = true;
         } finally {
             isDetecting = false;
         }
@@ -151,18 +157,22 @@
         }
     }
 
-    // UPDATE: 35 seconds duration
-    function addToast(type: 'success' | 'error', title: string, message: string) {
-        const id = toastCounter++;
-        toasts = [...toasts, { id, type, title, message }];
-        setTimeout(() => {
-            removeToast(id);
-        }, 35000);
-    }
-
-    // NEW: Manual close function
-    function removeToast(id: number) {
-        toasts = toasts.filter(t => t.id !== id);
+    async function exitApp() {
+        if (sessionId) {
+            // Send shutdown signal
+            await fetch('/api/shutdown', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sessionId }),
+                keepalive: true
+            });
+        }
+        // Close tab or show shutdown message
+        window.close();
+        document.body.innerHTML = `<div style="height:100vh;display:flex;align-items:center;justify-content:center;background:#020617;color:#94a3b8;font-family:sans-serif;flex-direction:column;gap:1rem;">
+            <h1 style="font-size:2rem;color:#e2e8f0;">TXT-FORGE Terminated</h1>
+            <p>You can now close this tab.</p>
+        </div>`;
     }
 
     async function loadFileTree() {
@@ -197,7 +207,9 @@
             selectedFilePaths = initialSet;
 
         } catch (e) {
-            addToast('error', 'Tree Scan Failed', 'Could not load file structure.');
+            dialogTitle = 'Tree Scan Failed';
+            dialogMessage = 'Could not load file structure.';
+            showErrorDialog = true;
         } finally {
             treeLoading = false;
         }
@@ -269,18 +281,24 @@
             // ... rest of existing logic ...
             const result = await res.json();
             if (result.success) {
-                addToast('success', 'Forging Complete!', `Saved to: ${result.outputPath}`);
-                // ...
-
+                // Open folder immediately (optional, keep if desired)
                 await fetch('/api/open', {
                     method: 'POST',
                     body: JSON.stringify({ path: result.outputPath })
                 });
+
+                // Show Success Dialog
+                successOutputPath = result.outputPath;
+                showSuccessDialog = true;
             } else {
-                addToast('error', 'Forging Failed', result.message);
+                dialogTitle = 'Forging Failed';
+                dialogMessage = result.message;
+                showErrorDialog = true;
             }
         } catch (e) {
-            addToast('error', 'Connection Error', 'Failed to communicate with server.');
+            dialogTitle = 'Connection Error';
+            dialogMessage = 'Failed to communicate with server.';
+            showErrorDialog = true;
         } finally {
             isProcessing = false;
             customPathOpen = false;
@@ -299,29 +317,66 @@
         <div class="absolute top-[10%] right-[20%] w-[400px] h-[400px] bg-cyan-500/10 rounded-full blur-[80px] animate-blob animation-delay-4000 mix-blend-screen"></div>
     </div>
 
-    <!-- TOAST NOTIFICATIONS (UPDATED) -->
-    <!-- Added 'items-center' to wrapper to strictly center items horizontally -->
-    <div class="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 flex flex-col-reverse items-center gap-3 max-w-md pointer-events-none">
-        {#each toasts as toast (toast.id)}
-            <!-- Changed y to 100 (comes from lower), easing to cubicOut (smooth/linear feel) -->
-            <div animate:flip transition:fly={{ x: 0, y: 100, duration: 500, easing: cubicOut }} class="pointer-events-auto shadow-2xl rounded-xl p-4 border backdrop-blur-xl flex gap-4 items-center relative group w-full
-                {toast.type === 'success' ? 'bg-emerald-950/95 border-emerald-500/50 text-emerald-100 shadow-emerald-900/20' : 'bg-red-950/95 border-red-500/50 text-red-100 shadow-red-900/20'}">
+    <!-- SUCCESS DIALOG -->
+    {#if showSuccessDialog}
+        <div class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm" transition:fade>
 
-                <div class="text-2xl pl-1">
-                    {toast.type === 'success' ? '✓' : '✕'}
-                </div>
-                <div class="flex-1 pr-8"> <!-- Added padding right for text so it doesnt hit X button -->
-                    <div class="font-bold text-sm">{toast.title}</div>
-                    <div class="text-xs opacity-80 mt-1 leading-relaxed">{toast.message}</div>
+            <div class="bg-slate-900 border border-emerald-500/30 rounded-3xl p-8 w-full max-w-lg shadow-2xl shadow-emerald-900/20 relative flex flex-col items-center text-center animate-fade-in-up">
+
+                <div class="w-20 h-20 bg-emerald-500/10 rounded-full flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(16,185,129,0.2)]">
+                    <svg class="w-10 h-10 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
                 </div>
 
-                <!-- Close Button (Enhanced hit area) -->
-                <button on:click={() => removeToast(toast.id)} class="absolute top-3 right-3 p-1 opacity-60 hover:opacity-100 transition-opacity hover:bg-white/10 rounded-md">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                <h3 class="text-3xl font-black text-white mb-2 tracking-tight">Forge Complete</h3>
+
+                <p class="text-slate-400 mb-8 leading-relaxed">
+                    Your files have been successfully merged and saved to:<br>
+                    <span class="text-emerald-400 font-mono text-sm bg-emerald-950/50 px-2 py-1 rounded mt-2 inline-block border border-emerald-500/20">{successOutputPath}</span>
+                </p>
+
+                <div class="flex flex-col gap-3 w-full">
+                    <!-- EXIT BUTTON (BIG) -->
+                    <button
+                        on:click={exitApp}
+                        class="w-full py-4 bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-500 hover:to-pink-500 text-white font-bold rounded-xl shadow-lg hover:shadow-red-500/25 transition-all transform hover:-translate-y-1 flex items-center justify-center gap-2 text-lg"
+                    >
+                        <span>✕</span> Close App & Exit
+                    </button>
+                    <!-- CONTINUE BUTTON (REGULAR) -->
+                    <button
+                        on:click={() => showSuccessDialog = false}
+                        class="w-full py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-semibold rounded-xl transition-colors border border-white/5 hover:border-white/10"
+                    >
+                        Continue Forging
+                    </button>
+                </div>
+            </div>
+        </div>
+    {/if}
+
+    <!-- ERROR DIALOG -->
+    {#if showErrorDialog}
+        <div class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm" transition:fade>
+
+            <div class="bg-slate-900 border border-red-500/30 rounded-3xl p-8 w-full max-w-md shadow-2xl shadow-red-900/20 relative flex flex-col items-center text-center animate-fade-in-up">
+
+                <div class="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mb-5">
+                    <span class="text-3xl">⚠️</span>
+                </div>
+
+                <h3 class="text-2xl font-bold text-white mb-2">{dialogTitle}</h3>
+
+                <p class="text-slate-400 mb-8 text-sm">{dialogMessage}</p>
+
+                <button
+                    on:click={() => showErrorDialog = false}
+                    class="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-colors"
+                >
+                    Close
                 </button>
             </div>
-        {/each}
-    </div>
+        </div>
+    {/if}
 
     <!-- Header -->
     <div class="text-center mb-10 mt-8 animate-fade-in-up relative z-10">

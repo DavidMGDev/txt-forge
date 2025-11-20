@@ -4,8 +4,9 @@ export default {
   theme: {
     extend: {
       animation: {
-        'text-gradient': 'text-gradient 4s ease infinite',
-        'blob': 'blob 10s infinite',
+        // CHANGE: Synced both animations to 8s for a cohesive light bounce effect
+        'text-gradient': 'text-gradient 8s ease infinite',
+        'blob': 'blob 8s infinite',
         'fade-in-up': 'fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards',
       },
       keyframes: {
