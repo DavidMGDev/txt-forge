@@ -5,6 +5,7 @@ import { spawn } from 'child_process';
 
 const CONFIG_DIR = path.join(os.homedir(), '.txt-forge');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
+const PROJECTS_FILE = path.join(CONFIG_DIR, 'projects.json'); // <--- NEW
 
 // Ensure config directory exists
 if (!fs.existsSync(CONFIG_DIR)) {
@@ -30,6 +31,38 @@ export function saveConfig(data) {
         console.error("Failed to save config", e);
     }
 }
+
+// --- NEW FUNCTIONS ---
+
+export function loadProjectConfig(projectPath) {
+    try {
+        if (fs.existsSync(PROJECTS_FILE)) {
+            const data = JSON.parse(fs.readFileSync(PROJECTS_FILE, 'utf-8'));
+            // Normalize path to ensure consistency
+            const normalizedPath = path.resolve(projectPath);
+            return data[normalizedPath] || null;
+        }
+    } catch (e) {
+        console.error("Failed to load project config", e);
+    }
+    return null;
+}
+
+export function saveProjectConfig(projectPath, config) {
+    try {
+        let data = {};
+        if (fs.existsSync(PROJECTS_FILE)) {
+            data = JSON.parse(fs.readFileSync(PROJECTS_FILE, 'utf-8'));
+        }
+        const normalizedPath = path.resolve(projectPath);
+        data[normalizedPath] = config;
+        fs.writeFileSync(PROJECTS_FILE, JSON.stringify(data, null, 2));
+    } catch (e) {
+        console.error("Failed to save project config", e);
+    }
+}
+
+// ---------------------
 
 export async function pickDirectory() {
     const platform = os.platform();

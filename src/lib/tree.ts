@@ -57,8 +57,8 @@ const MAX_FILE_SIZE_MB = 1 * 1024 * 1024; // 1MB
  * specific ignore logic for the tree view (lighter than the full processor)
  */
 function isSystemIgnored(name: string): boolean {
-    // UPDATED: Added check for Godot .import files
-    return SYSTEM_HIDDEN.includes(name) || name.startsWith('.') || name.endsWith('.import');
+    // UPDATED: Added check for Godot .import and .uid files
+    return SYSTEM_HIDDEN.includes(name) || name.startsWith('.') || name.endsWith('.import') || name.endsWith('.uid');
 }
 
 export async function scanDirectory(

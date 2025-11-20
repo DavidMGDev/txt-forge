@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { detectCodebase, processFiles } from '$lib/processor';
+import { loadProjectConfig } from '$lib/server/sys-utils'; // <--- NEW
 
 export async function POST({ request }) {
     const { saveToVault, hideIgnoredInTree, customPath } = await request.json();
@@ -16,15 +17,43 @@ export async function POST({ request }) {
     // 3. Run Auto-Detection
     const detection = await detectCodebase(cwd);
 
+    // Load Project Config
+    const projectConfig = loadProjectConfig(cwd);
+
+    // Determine settings based on config (if exists)
+    const templatesToUse = projectConfig ? projectConfig.templateIds : detection.ids;
+    const selectedFilesToUse = projectConfig ? projectConfig.selectedFiles : undefined;
+
+    // CLI flag overrides config if explicitly passed (logic: if hideIgnoredInTree is true from CLI, use it, else check config)
+
+    // However, CLI 'hideIgnoredInTree' comes from a flag.
+
+    // If user didn't pass flag, CLI passes false? In CLI.js: const isHidden = args.includes...
+
+    // Actually, simple logic: Use config if exists, otherwise default.
+
+    // But if user passes explicit CLI flags, they might expect override.
+
+    // For now, let's prioritize Config for 'selectedFiles' and 'templates'.
+
+    // For 'hideIgnored', we prioritize the CLI flag if it matches the intent (hidden), otherwise config.
+
+    let finalHideIgnored = hideIgnoredInTree;
+    if (projectConfig && projectConfig.hideIgnoredInTree !== undefined) {
+        // If CLI flag was NOT set (false), use config. If CLI flag WAS set (true), use CLI.
+        // Actually, just usage of config is preferred for consistency.
+        finalHideIgnored = projectConfig.hideIgnoredInTree;
+    }
+
     // 4. Process Files (The "Forge" step) using detected templates
     const result = await processFiles({
         sourceDir: cwd,
         saveMode: saveMode,
-        customPath: customPath,     // Pass the string (or undefined)
-        templateIds: detection.ids, // Use all detected templates
-        maxChars: 75000,            // Default max chars
-        selectedFiles: undefined,   // Undefined means "use templates to decide"
-        hideIgnoredInTree: hideIgnoredInTree // <--- UPDATED
+        customPath: customPath,
+        templateIds: templatesToUse, // Use config or detected
+        maxChars: 75000,
+        selectedFiles: selectedFilesToUse, // Use config files or undefined
+        hideIgnoredInTree: finalHideIgnored
     });
 
     return json({

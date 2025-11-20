@@ -591,8 +591,8 @@ export async function processFiles(config: ProcessConfig): Promise<ProcessResult
 
         // 1. Setup Ignores
 
-        // UPDATED: Added '*.import' to exclude Godot import files globally
-        const ignorePatterns = new Set<string>(['.git', 'node_modules', '.godot', 'TXT-Forge', '.txt-forge-vault', '*.import']);
+        // UPDATED: Added '*.uid' to exclude Godot uid files
+        const ignorePatterns = new Set<string>(['.git', 'node_modules', '.godot', 'TXT-Forge', '.txt-forge-vault', '*.import', '*.uid']);
 
         // ADDED: '.godot' to massive folders list
         const massiveFolders = new Set<string>(['node_modules', '.git', '.godot', '.svelte-kit', '.next', 'dist', 'build', 'vendor']); // Explicit massive folders
@@ -633,8 +633,9 @@ export async function processFiles(config: ProcessConfig): Promise<ProcessResult
             // We also ensure *.import is in massiveIgnores logic if not already implicitly handled,
             // but better to concat the global ignorePatterns to be safe, or just rely on the fact that
             // scanFiles checks ignores.
-            // To be safe for .import files in the tree, we add them to this specific call's ignore list:
+            // To be safe for .import and .uid files in the tree, we add them to this specific call's ignore list:
             massiveIgnores.push('*.import');
+            massiveIgnores.push('*.uid');
 
             filesForTree = await scanFiles(sourceRoot, sourceRoot, [], massiveIgnores, true);
         } else {

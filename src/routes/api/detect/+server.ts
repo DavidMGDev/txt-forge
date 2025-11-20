@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { detectCodebase } from '$lib/processor';
-import { loadConfig } from '$lib/server/sys-utils';
+import { loadConfig, loadProjectConfig } from '$lib/server/sys-utils'; // <--- UPDATED
 import os from 'os';
 import path from 'path';
 
@@ -13,6 +13,7 @@ export async function GET() {
 
     // 2. Load User Config
     const config = loadConfig();
+    const projectConfig = loadProjectConfig(cwd); // <--- NEW
 
     // 3. Calculate Global Vault Path for display
     const globalPath = path.join(os.homedir(), '.txt-forge-vault');
@@ -22,6 +23,7 @@ export async function GET() {
         cwd,
         sessionId,
         savedCustomPath: config.lastCustomPath || '',
-        globalVaultPath: globalPath
+        globalVaultPath: globalPath,
+        projectConfig // <--- NEW
     });
 }

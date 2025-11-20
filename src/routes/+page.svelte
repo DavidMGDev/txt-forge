@@ -26,6 +26,8 @@
 
     let detectedIds: string[] = $state([]);
 
+    let projectConfig: any = $state(null); // <--- NEW
+
     let detectionReasons: Record<string, string[]> = $state({});
 
     let gitStatus: 'none' | 'clean' | 'ignored' = $state('none');
@@ -188,7 +190,18 @@
 
             globalVaultPath = data.globalVaultPath;
 
-            selectedIds = [...detectedIds];
+            projectConfig = data.projectConfig; // <--- NEW
+
+            // Apply Config if exists
+            if (projectConfig) {
+                selectedIds = projectConfig.templateIds || [...detectedIds];
+                // Note: Config stores 'hide', UI uses 'include' (inverted)
+                if (projectConfig.hideIgnoredInTree !== undefined) {
+                    includeIgnoredFiles = !projectConfig.hideIgnoredInTree;
+                }
+            } else {
+                selectedIds = [...detectedIds];
+            }
 
         } catch (e) {
 
@@ -418,11 +431,21 @@
 
             processNode(treeNodes, false);
 
-            // NEW: Set both the current selection AND the default baseline
+            // NEW: Set default baseline
 
-            selectedFilePaths = initialSet;
+            defaultFilePaths = new Set(initialSet);
 
-            defaultFilePaths = new Set(initialSet); // Clone it
+            // Apply Saved Selection if available, otherwise use default
+
+            if (projectConfig && projectConfig.selectedFiles) {
+
+                selectedFilePaths = new Set(projectConfig.selectedFiles);
+
+            } else {
+
+                selectedFilePaths = initialSet;
+
+            }
 
         } catch (e) {
 
@@ -686,6 +709,46 @@
 
     }
 
+    async function saveCurrentConfig() {
+
+        const config = {
+
+            templateIds: selectedIds,
+
+            selectedFiles: Array.from(selectedFilePaths),
+
+            hideIgnoredInTree: !includeIgnoredFiles
+
+        };
+
+
+
+        try {
+
+            await fetch('/api/save-config', {
+
+                method: 'POST',
+
+                headers: { 'Content-Type': 'application/json' },
+
+                body: JSON.stringify({ path: cwd, config })
+
+            });
+
+            // Visual feedback handled in button
+
+            return true;
+
+        } catch (e) {
+
+            console.error("Failed to save config");
+
+            return false;
+
+        }
+
+    }
+
     async function runForge(mode: 'root' | 'global' | 'custom') {
 
         isProcessing = true;
@@ -893,6 +956,40 @@
                 </p>
 
                 <div class="flex flex-col gap-4 w-full">
+
+                    <!-- SAVE CONFIG OPTION -->
+
+                    <div class="flex items-center justify-center gap-2 mb-2">
+
+                        <button
+
+                            onclick={async (e) => {
+
+                                const btn = e.currentTarget;
+
+                                const success = await saveCurrentConfig();
+
+                                if(success) {
+
+                                    btn.innerHTML = '<span class="text-emerald-400">✓ Configuration Saved</span>';
+
+                                    btn.disabled = true;
+
+                                    btn.classList.add('bg-emerald-900/20', 'border-emerald-500/30');
+
+                                }
+
+                            }}
+
+                            class="text-[10px] font-bold uppercase tracking-wider py-2 px-4 rounded-lg border border-slate-800 bg-slate-900/50 text-slate-400 hover:text-white hover:bg-slate-800 hover:border-slate-600 transition-all"
+
+                        >
+
+                            Save Project Configuration
+
+                        </button>
+
+                    </div>
 
                     <button onclick={exitApp} class="w-full py-4 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-orange-500/50 text-orange-100 hover:text-white font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-3 group">
 
