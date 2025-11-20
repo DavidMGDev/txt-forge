@@ -54,6 +54,9 @@
 
     let selectedFilePaths: Set<string> = $state(new Set());
 
+    // NEW: Cache map for instant toggling performance
+    let folderDescendants = new Map<string, string[]>();
+
     let treeCardElement: HTMLElement;
 
     let fileTypeMap = new Map<string, 'file' | 'folder'>();
@@ -249,17 +252,22 @@
     async function exitApp() {
 
         isShuttingDown = true;
-        // UPDATED: Removed 'showSuccessDialog = false;' to prevent UI flash
 
-        
 
-        // Wait 1.5s for UX
+
+        // Wait 1.5s for UX (Loader is visible)
 
         await new Promise(resolve => setTimeout(resolve, 1500));
 
+
+
+        // Send Shutdown Request
+
         if (sessionId) {
 
-            await fetch('/api/shutdown', {
+            // Fire and forget (don't await, so we close faster)
+
+            fetch('/api/shutdown', {
 
                 method: 'POST',
 
@@ -269,21 +277,23 @@
 
                 keepalive: true
 
-            });
+            }).catch(() => {});
 
         }
 
+
+
+        // Close Window
+
         window.close();
 
-        document.body.innerHTML = `
+        
 
-        <div style="height:100vh;display:flex;align-items:center;justify-content:center;background:#020617;color:#94a3b8;font-family:sans-serif;flex-direction:column;gap:1rem;background-image:radial-gradient(circle at 50% 50%, #f9731622 0%, #0000 70%);">
+        // Fallback: If window.close() is blocked by browser security,
 
-            <h1 style="font-size:2rem;color:#fb923c;text-transform:uppercase;letter-spacing:2px;font-weight:bold;">Session Concluded</h1>
+        // we just stay on the "Terminating Session" loader which is already active.
 
-            <p>You may close this tab.</p>
-
-        </div>`;
+        // We DO NOT replace the HTML body, preventing the "jumpscare".
 
     }
 
@@ -305,31 +315,53 @@
 
             fileTypeMap.clear();
 
+            folderDescendants.clear(); // Clear cache
+
             const initialSet = new Set<string>();
 
             const processNode = (nodes: any[]) => {
+
+                const currentLevelPaths: string[] = [];
+
+                
 
                 for (const node of nodes) {
 
                     fileTypeMap.set(node.path, node.type);
 
+                    currentLevelPaths.push(node.path); // Add self
+
+                    // Logic for initial selection (same as before)
+
                     if (!node.isIgnored) {
 
-                        if (node.type === 'folder') {
-
-                            initialSet.add(node.path);
-
-                            if (node.children) processNode(node.children);
-
-                        } else {
-
-                            initialSet.add(node.path);
-
-                        }
+                        initialSet.add(node.path);
 
                     }
 
+
+
+                    if (node.type === 'folder' && node.children) {
+
+                        // Recursively get all children paths
+
+                        const childrenPaths = processNode(node.children);
+
+                        // Map this folder path to ALL its descendants
+
+                        folderDescendants.set(node.path, childrenPaths);
+
+                        // Add children to current level for the parent's map
+
+                        currentLevelPaths.push(...childrenPaths);
+
+                    }
+
+
+
                 }
+
+                return currentLevelPaths;
 
             };
 
@@ -357,47 +389,47 @@
 
         const newSet = new Set(selectedFilePaths);
 
-        const findNode = (nodes: any[]): any => {
+        
 
-            for (const node of nodes) {
+        // Determine the new state
 
-                if (node.path === path) return node;
+        const nextState = forcedState !== undefined ? forcedState : !newSet.has(path);
 
-                if (node.children) {
 
-                    const found = findNode(node.children);
 
-                    if (found) return found;
+        // 1. Update the target node itself
+
+        if (nextState) newSet.add(path);
+
+        else newSet.delete(path);
+
+
+
+        // 2. If it's a folder, instantly update all descendants using the pre-calculated map
+
+        if (isFolder) {
+
+            const descendants = folderDescendants.get(path);
+
+            if (descendants) {
+
+                if (nextState) {
+
+                    for (const p of descendants) newSet.add(p);
+
+                } else {
+
+                    for (const p of descendants) newSet.delete(p);
 
                 }
 
             }
 
-            return null;
+        }
 
-        };
 
-        const targetNode = findNode(treeNodes);
 
-        if (!targetNode) return;
-
-        const applyState = (node: any, state: boolean) => {
-
-            if (state) newSet.add(node.path);
-
-            else newSet.delete(node.path);
-
-            if (node.children) {
-
-                node.children.forEach((child: any) => applyState(child, state));
-
-            }
-
-        };
-
-        const nextState = forcedState !== undefined ? forcedState : !newSet.has(path);
-
-        applyState(targetNode, nextState);
+        // 3. Trigger Reactivity once
 
         selectedFilePaths = newSet;
 
@@ -546,7 +578,12 @@
 
         <div class="fixed inset-0 z-[200] bg-[#020617] flex flex-col items-center justify-center" transition:fade>
 
-             <div class="relative">
+            <!-- NEW: Ultimate Blackout Overlay for Shutdown -->
+            {#if isShuttingDown}
+                <div class="absolute inset-0 bg-black z-[210] animate-[fadeIn_1.5s_ease-in_forwards] pointer-events-none"></div>
+            {/if}
+
+             <div class="relative z-[205]">
 
                 <div class="w-32 h-32 bg-orange-500/10 rounded-full animate-ping absolute top-0 left-0"></div>
 
