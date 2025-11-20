@@ -590,8 +590,12 @@ export async function processFiles(config: ProcessConfig): Promise<ProcessResult
         let filesForTree: string[] = []; // Separate list for the visual tree
 
         // 1. Setup Ignores
-        const ignorePatterns = new Set<string>(['.git', 'node_modules', 'TXT-Forge', '.txt-forge-vault']);
-        const massiveFolders = new Set<string>(['node_modules', '.git', '.svelte-kit', '.next', 'dist', 'build', 'vendor']); // Explicit massive folders
+
+        // ADDED: '.godot' to hard ignores
+        const ignorePatterns = new Set<string>(['.git', 'node_modules', '.godot', 'TXT-Forge', '.txt-forge-vault']);
+
+        // ADDED: '.godot' to massive folders list
+        const massiveFolders = new Set<string>(['node_modules', '.git', '.godot', '.svelte-kit', '.next', 'dist', 'build', 'vendor']); // Explicit massive folders
 
         const activeTemplates = templates.filter(t => config.templateIds.includes(t.id));
         activeTemplates.forEach(t => t.ignores.forEach(ign => ignorePatterns.add(ign.replace(/\/$/, ''))));

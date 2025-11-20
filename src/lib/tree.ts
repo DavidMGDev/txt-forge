@@ -21,6 +21,7 @@ const SYSTEM_HIDDEN = [
     '.DS_Store',
     'Thumbs.db',
     'node_modules',
+    '.godot', // <--- ADDED
     '.svelte-kit',
     '.txt-forge-vault',
     'TXT-Forge',
@@ -43,6 +44,7 @@ const MEDIA_EXTENSIONS = new Set([
 const MASSIVE_FOLDERS = new Set([
     'node_modules', 'bower_components', 'vendor',
     '.git', '.svn', '.hg',
+    '.godot', // <--- ADDED
     '.svelte-kit', '.next', '.nuxt', '.output',
     'dist', 'build', 'out', 'target',
     'CMakeFiles', '.gradle', '.idea', '.vscode'
