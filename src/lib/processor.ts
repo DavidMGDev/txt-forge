@@ -400,8 +400,8 @@ async function scanFiles(rootDir: string, currentDir: string, extensions: string
 }
 
 /**
- * BIN PACKING MERGE (Best Fit Decreasing)
- * Minimizes the number of output files by filling gaps intelligently.
+ * LINEAR MERGE (Next Fit)
+ * Preserves file order from the source tree. Pushes multipart files to the end.
  */
 async function mergeFiles(
     files: { relPath: string, content: string }[],
@@ -412,87 +412,64 @@ async function mergeFiles(
     const createdFiles: string[] = [];
     let fileIndex = 1;
 
-    // 1. Prepare Items with Headers (Calculate total size)
-    interface ProcessItem {
-        relPath: string;
-        fullText: string;
-        size: number;
-        isMultipart: boolean;
-    }
-
-    const items: ProcessItem[] = [];
-    const multipartItems: { relPath: string, content: string }[] = [];
+    // 1. Separate Standard vs Multipart
+    // We preserve the incoming order (Source Tree order) for standard files.
+    const standardFiles: { relPath: string, fullText: string }[] = [];
+    const multipartFiles: { relPath: string, content: string }[] = [];
 
     for (const file of files) {
         const header = `\n${'='.repeat(50)}\nFile: ${file.relPath}\n${'='.repeat(50)}\n\n`;
         const fullText = header + file.content + "\n\n";
 
         if (fullText.length > maxChars) {
-            // Handle Huge files separately
-            multipartItems.push(file);
+            multipartFiles.push(file);
         } else {
-            items.push({
-                relPath: file.relPath,
-                fullText: fullText,
-                size: fullText.length,
-                isMultipart: false
-            });
+            standardFiles.push({ relPath: file.relPath, fullText });
         }
     }
 
-    // 2. Sort Standard Items (Largest to Smallest) for BFD Algorithm
-    items.sort((a, b) => b.size - a.size);
+    // 2. Process Standard Files (Linear Fill)
+    let currentBuffer = "";
+    let currentBufferIndex: string[] = [];
 
-    // 3. Bin Packing
-    interface Bin {
-        currentSize: number;
-        items: ProcessItem[];
-    }
+    const flushBuffer = async () => {
+        if (currentBuffer.length === 0) return;
 
-    const bins: Bin[] = [];
+        const filename = `Source-${fileIndex} (${currentBufferIndex.length} Files).txt`;
+        const indexHeader = "--- INDEX ---\n" + currentBufferIndex.join('\n') + "\n" + "-".repeat(30) + "\n\n";
 
-    for (const item of items) {
-        // Find the tightest bin that fits this item (Best Fit)
-        let bestBinIndex = -1;
-        let minRemainingSpace = Infinity;
+        await fs.writeFile(path.join(outputDir, filename), indexHeader + currentBuffer, 'utf-8');
+        createdFiles.push(filename);
 
-        for (let i = 0; i < bins.length; i++) {
-            const remaining = maxChars - bins[i].currentSize;
-            if (remaining >= item.size) {
-                if (remaining < minRemainingSpace) {
-                    minRemainingSpace = remaining;
-                    bestBinIndex = i;
-                }
-            }
+        fileIndex++;
+        currentBuffer = "";
+        currentBufferIndex = [];
+    };
+
+    for (const item of standardFiles) {
+        // If adding this file exceeds limit, flush current buffer first
+        if (currentBuffer.length + item.fullText.length > maxChars) {
+            await flushBuffer();
         }
 
-        if (bestBinIndex !== -1) {
-            // Place in existing bin
-            bins[bestBinIndex].items.push(item);
-            bins[bestBinIndex].currentSize += item.size;
-        } else {
-            // Create new bin
-            bins.push({
-                currentSize: item.size,
-                items: [item]
-            });
-        }
+        currentBuffer += item.fullText;
+        currentBufferIndex.push(item.relPath);
     }
 
-    // 4. Process Multipart Files (They get their own unique bins/files)
-    // We process these immediately to get them out of the way
-    for (const file of multipartItems) {
+    // Flush remaining standard files
+    await flushBuffer();
+
+    // 3. Process Multipart Files (At the end)
+    for (const file of multipartFiles) {
         let remaining = file.content;
         let part = 1;
-        const totalParts = Math.ceil(remaining.length / (maxChars - 500)); // 500 buffer for headers
+        const totalParts = Math.ceil(remaining.length / (maxChars - 500));
 
         while (remaining.length > 0) {
             const header = `\n${'='.repeat(50)}\nFile: ${file.relPath} (Part ${part}/${totalParts})\n${'='.repeat(50)}\n\n`;
             const availableSpace = maxChars - header.length;
 
-            // Unique ID for multiparts
             const filename = `Source-${fileIndex}.${part} (Multipart File).txt`;
-
             let contentToWrite = "";
 
             if (remaining.length <= availableSpace) {
@@ -509,6 +486,7 @@ async function mergeFiles(
                 }
                 if (splitIdx === -1) splitIdx = searchWindow.lastIndexOf('\n');
                 if (splitIdx === -1) splitIdx = availableSpace;
+
                 contentToWrite = header + remaining.substring(0, splitIdx) + "\n\n";
                 remaining = remaining.substring(splitIdx);
             }
@@ -518,24 +496,6 @@ async function mergeFiles(
             createdFiles.push(filename);
             part++;
         }
-        fileIndex++;
-    }
-
-    // 5. Write Bins (Standard Files)
-    for (const bin of bins) {
-        const filename = `Source-${fileIndex} (${bin.items.length} Files).txt`;
-
-        // Build Index
-        const indexList = bin.items.map(i => i.relPath).join('\n');
-        const indexHeader = "--- INDEX ---\n" + indexList + "\n" + "-".repeat(30) + "\n\n";
-
-        // Build Body (Sort alphabetically inside the file for readability, or keep size order?
-        // Typically alphabetical is better for reading context within a single file)
-        bin.items.sort((a, b) => a.relPath.localeCompare(b.relPath));
-        const body = bin.items.map(i => i.fullText).join('');
-
-        await fs.writeFile(path.join(outputDir, filename), indexHeader + body, 'utf-8');
-        createdFiles.push(filename);
         fileIndex++;
     }
 

@@ -995,6 +995,34 @@
 
                                 </button>
 
+                                <!-- RESTORED TOOLTIP -->
+                                {#if detectionReasons[tmpl.id]}
+                                    <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-max max-w-[200px] bg-black/90 border border-white/10 p-3 rounded-xl shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 backdrop-blur-md">
+
+                                        <div class="text-[10px] text-slate-400 font-mono">
+
+                                            <div class="text-orange-400 font-bold mb-1 border-b border-white/10 pb-1 uppercase tracking-wider">Detected via:</div>
+
+                                            <ul class="list-disc list-inside space-y-0.5">
+
+                                                {#each detectionReasons[tmpl.id] as reason}
+
+                                                    <li class="truncate text-slate-300">{reason}</li>
+
+                                                {/each}
+
+                                            </ul>
+
+                                        </div>
+
+                                        <!-- Arrow -->
+
+                                        <div class="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-black/90"></div>
+
+                                    </div>
+
+                                {/if}
+
                             </div>
 
                         {/each}
@@ -1051,7 +1079,9 @@
 
             <!-- FILE TREE CARD -->
 
-            <div class="bg-slate-900/40 backdrop-blur-xl border border-white/10 rounded-3xl p-8 shadow-2xl flex flex-col gap-4 animate-fade-in-up relative overflow-hidden z-10" style="animation-delay: 0.15s;" bind:this={treeCardElement}>
+            <!-- UPDATED: Removed 'overflow-hidden' so tooltips are not cut off -->
+            <!-- FIXED: Changed z-10 to z-30 so this card (and its tooltips) sits ABOVE the Templates card (z-20) -->
+            <div class="bg-slate-900/40 backdrop-blur-xl border border-white/10 rounded-3xl p-8 shadow-2xl flex flex-col gap-4 animate-fade-in-up relative z-30" style="animation-delay: 0.15s;" bind:this={treeCardElement}>
 
                 <div class="flex justify-between items-center relative z-10">
 
@@ -1092,7 +1122,7 @@
 
                             <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500 peer-checked:text-orange-200 transition-colors">
 
-                                Full Context
+                                Show Ignored in Tree
 
                             </span>
 
@@ -1102,11 +1132,23 @@
 
                          <!-- Tooltip -->
 
-                         <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 bg-black border border-white/10 p-3 rounded-lg shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 text-[10px] text-slate-400 leading-relaxed">
+                         <!-- UPDATED: Adjusted position to avoid any potential clipping even without overflow-hidden -->
 
-                            <strong class="text-orange-400 block mb-1">Visual Context Mode</strong>
+                         <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-64 bg-black/95 backdrop-blur-md border border-white/10 p-4 rounded-xl shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 text-[10px] text-slate-400 leading-relaxed">
 
-                            Includes ignored files (like package-lock.json) in the Source-Tree.txt map for context, but does NOT merge their content. Massive folders (node_modules) remain excluded.
+                            <strong class="text-orange-400 block mb-1 uppercase tracking-wider">Tree Map Only</strong>
+
+                            When enabled, ignored files (like <code class="text-slate-300">package-lock.json</code>) will appear in <code class="text-slate-300">Source-Tree.txt</code> to give the AI full context of your file structure.
+
+                            <br><br>
+
+                            <span class="text-slate-500 italic">Note: Massive folders like node_modules remain hidden.</span>
+
+
+
+                            <!-- Arrow -->
+
+                            <div class="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-black/95"></div>
 
                          </div>
 
