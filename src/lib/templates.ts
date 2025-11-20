@@ -5,6 +5,8 @@ export interface CodebaseTemplate {
   ignores: string[];
   iconUrl: string;
   triggers: string[];
+  // NEW: Explicit NPM package names that identify this framework
+  packageMatch?: string[];
 }
 
 export const templates: CodebaseTemplate[] = [
@@ -25,7 +27,8 @@ export const templates: CodebaseTemplate[] = [
     ],
     iconUrl:
       "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/typescript.svg",
-    triggers: ["tsconfig.json", "package.json"],
+    triggers: ["tsconfig.json"], // Removed package.json
+    packageMatch: ["typescript"],
   },
   {
     id: "python",
@@ -428,7 +431,8 @@ export const templates: CodebaseTemplate[] = [
       ".eslintcache",
     ],
     iconUrl: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/react.svg",
-    triggers: ["*.jsx", "*.tsx"], // CHANGED: Removed package.json. Kept file extensions.
+    triggers: ["*.jsx", "*.tsx"],
+    packageMatch: ["react", "react-dom", "react-scripts"],
   },
   {
     id: "nextjs",
@@ -445,8 +449,8 @@ export const templates: CodebaseTemplate[] = [
     ],
     iconUrl:
       "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/nextdotjs.svg",
-    // ADDED: next.config.mjs, next.config.ts, next.config.cjs
-    triggers: ["next.config.js", "next.config.mjs", "next.config.ts", "next.config.cjs", "package.json"],
+    triggers: ["next.config.js", "next.config.mjs", "next.config.ts", "next.config.cjs"], // Removed package.json
+    packageMatch: ["next"],
   },
   {
     id: "django",
@@ -483,7 +487,8 @@ export const templates: CodebaseTemplate[] = [
     ],
     iconUrl:
       "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/vuedotjs.svg",
-    triggers: ["package.json", "*.vue"],
+    triggers: ["*.vue"], // Removed package.json
+    packageMatch: ["vue"],
   },
   {
     id: "spring-boot",
@@ -523,7 +528,8 @@ export const templates: CodebaseTemplate[] = [
     ],
     iconUrl:
       "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/express.svg",
-    triggers: [], // CHANGED: Empty triggers. Relies on 'express' dependency.
+    triggers: [],
+    packageMatch: ["express"], // Explicit match
   },
   {
     id: "angular",
@@ -542,7 +548,8 @@ export const templates: CodebaseTemplate[] = [
     ],
     iconUrl:
       "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/angular.svg",
-    triggers: ["angular.json", "package.json"],
+    triggers: ["angular.json"], // Removed package.json
+    packageMatch: ["@angular/core", "@angular/common"], // Added strict match
   },
   {
     id: "nuxtjs",
@@ -560,7 +567,8 @@ export const templates: CodebaseTemplate[] = [
     ],
     iconUrl:
       "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/nuxtdotjs.svg",
-    triggers: ["nuxt.config.ts", "package.json"],
+    triggers: ["nuxt.config.ts", "nuxt.config.js"], // Removed package.json
+    packageMatch: ["nuxt", "nuxt3"],
   },
   {
     id: "remix",
@@ -578,7 +586,8 @@ export const templates: CodebaseTemplate[] = [
     ],
     iconUrl:
       "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/remix.svg",
-    triggers: ["remix.config.js", "package.json"],
+    triggers: ["remix.config.js"], // Removed package.json
+    packageMatch: ["@remix-run/react", "@remix-run/node"],
   },
   {
     id: "sveltekit",
@@ -596,7 +605,8 @@ export const templates: CodebaseTemplate[] = [
     ],
     iconUrl:
       "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/svelte.svg",
-    triggers: ["svelte.config.js", "package.json"],
+    triggers: ["svelte.config.js"], // Removed package.json
+    packageMatch: ["@sveltejs/kit"],
   },
   {
     id: "astro",
@@ -612,7 +622,8 @@ export const templates: CodebaseTemplate[] = [
       ".vercel",
     ],
     iconUrl: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/astro.svg",
-    triggers: ["astro.config.mjs", "package.json"],
+    triggers: ["astro.config.mjs", "astro.config.js"], // Removed package.json
+    packageMatch: ["astro"],
   },
   {
     id: "qwik",
@@ -628,7 +639,8 @@ export const templates: CodebaseTemplate[] = [
       ".vercel",
     ],
     iconUrl: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/qwik.svg",
-    triggers: ["qwik.config.ts", "package.json"],
+    triggers: ["qwik.config.ts"], // Removed package.json
+    packageMatch: ["@builder.io/qwik"],
   },
   {
     id: "nestjs",
@@ -646,7 +658,8 @@ export const templates: CodebaseTemplate[] = [
     ],
     iconUrl:
       "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/nestjs.svg",
-    triggers: ["package.json", "src/main.ts"],
+    triggers: ["nest-cli.json", "src/main.ts"], // Removed package.json
+    packageMatch: ["@nestjs/core"],
   },
   {
     id: "fastify",
@@ -663,7 +676,8 @@ export const templates: CodebaseTemplate[] = [
     ],
     iconUrl:
       "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/fastify.svg",
-    triggers: [], // CHANGED: Empty triggers. Relies on 'fastify' dependency.
+    triggers: [],
+    packageMatch: ["fastify"],
   },
   {
     id: "koa",
@@ -678,7 +692,8 @@ export const templates: CodebaseTemplate[] = [
       "coverage/",
     ],
     iconUrl: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/koa.svg",
-    triggers: [], // CHANGED: Empty triggers. Relies on 'koa' dependency.
+    triggers: [],
+    packageMatch: ["koa"],
   },
   {
     id: "meteorjs",
@@ -695,7 +710,8 @@ export const templates: CodebaseTemplate[] = [
     ],
     iconUrl:
       "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/meteor.svg",
-    triggers: ["package.json", ".meteor/"],
+    triggers: [".meteor/"], // Removed package.json
+    packageMatch: ["meteor-node-stubs"],
   },
   {
     id: "solidjs",
@@ -711,7 +727,8 @@ export const templates: CodebaseTemplate[] = [
       "coverage/",
     ],
     iconUrl: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/solid.svg",
-    triggers: ["vite.config.ts", "package.json"],
+    triggers: [], // Vite config is too generic, package.json is too generic
+    packageMatch: ["solid-js"],
   },
   {
     id: "laravel",
@@ -733,7 +750,8 @@ export const templates: CodebaseTemplate[] = [
     ],
     iconUrl:
       "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/laravel.svg",
-    triggers: ["artisan", "composer.json"],
+    triggers: ["artisan"], // Removed composer.json
+    packageMatch: ["laravel/framework"], // Check composer dependency
   },
   {
     id: "godot4",
@@ -812,7 +830,8 @@ export const templates: CodebaseTemplate[] = [
       "*.ipa"
     ],
     iconUrl: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/react.svg",
-    triggers: ["react-native.config.js", "android/gradelew", "ios/Podfile"],
+    triggers: ["react-native.config.js"], // Removed generic OS files
+    packageMatch: ["react-native"],
   },
   {
     id: "expo",
@@ -827,7 +846,8 @@ export const templates: CodebaseTemplate[] = [
       "yarn-debug.log*"
     ],
     iconUrl: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/expo.svg",
-    triggers: ["app.json", "babel.config.js"],
+    triggers: ["app.json"], // Removed babel.config.js
+    packageMatch: ["expo"],
   }
 ];
 
