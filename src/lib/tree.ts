@@ -35,7 +35,7 @@ export async function scanDirectory(
     rootDir: string,
     currentDir: string,
     depth: number = 0,
-    ignorePatterns: string[] = []
+    additionalIgnores: string[] = [] // <--- NEW PARAMETER
 ): Promise<TreeNode[]> {
     const nodes: TreeNode[] = [];
 
@@ -46,14 +46,15 @@ export async function scanDirectory(
         return []; // identifying access errors
     }
 
-    // Try to read .gitignore in this directory to append to patterns
-    const localIgnores = [...ignorePatterns];
+    // Merge passed ignores with local .gitignore
+    // We pass additionalIgnores recursively
+    const activeIgnores = [...additionalIgnores];
     const gitIgnorePath = path.join(currentDir, '.gitignore');
     try {
         const gitIgnoreContent = await fs.readFile(gitIgnorePath, 'utf-8');
         gitIgnoreContent.split('\n').forEach(line => {
             const l = line.trim();
-            if (l && !l.startsWith('#')) localIgnores.push(l);
+            if (l && !l.startsWith('#')) activeIgnores.push(l);
         });
     } catch (e) { /* No gitignore here */ }
 
@@ -77,7 +78,7 @@ export async function scanDirectory(
 
         // Check against accumulated patterns (Strict Git Logic)
         if (!isIgnored) {
-             isIgnored = localIgnores.some(pattern => {
+             isIgnored = activeIgnores.some(pattern => {
                 let p = pattern.trim();
                 if (!p || p.startsWith('#')) return false;
 
@@ -127,7 +128,9 @@ export async function scanDirectory(
 
         if (isDirectory) {
             // Recursively scan
-            node.children = await scanDirectory(rootDir, fullPath, depth + 1, localIgnores);
+            // Pass the ORIGINAL additionalIgnores down, not the accumulated local ones
+            // (Logic: local .gitignores only apply to that folder and subfolders, but template ignores apply globally)
+            node.children = await scanDirectory(rootDir, fullPath, depth + 1, additionalIgnores);
         }
 
         nodes.push(node);

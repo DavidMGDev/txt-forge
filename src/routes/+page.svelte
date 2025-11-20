@@ -9,6 +9,8 @@
     // --- STATE ---
     let isDetecting = $state(true);
     let isProcessing = $state(false);
+    // NEW: Explicit loading state for initial load
+    let isAppLoading = $state(true);
     let settingsOpen = $state(false);
     let templatesExpanded = $state(false);
 
@@ -94,16 +96,23 @@
 
     // --- LOGIC ---
     onMount(async () => {
-        // Run detection and tree loading in parallel
-        await Promise.all([
-            detect(),
-            loadFileTree() // Call this immediately
-        ]);
+        // Only detect on mount. Tree load is now reactive.
+        await detect();
+        isAppLoading = false; // Hide initial splash
         window.addEventListener('beforeunload', handleUnload);
     });
 
     onDestroy(() => {
         if (typeof window !== 'undefined') window.removeEventListener('beforeunload', handleUnload);
+    });
+
+    // NEW: Reactive Tree Loader
+    // Whenever selectedIds changes, reload the tree to apply ignores
+    $effect(() => {
+        // Simple debounce/check to ensure we have IDs (even empty list is valid)
+        if (!isDetecting && !isAppLoading) {
+             loadFileTree();
+        }
     });
 
     // FIX: Use fetch with keepalive instead of sendBeacon to fix JSON errors
@@ -216,13 +225,15 @@
     }
 
     async function loadFileTree() {
-        // If already loaded, don't fetch again
-        if (treeNodes.length > 0) return;
-
         treeLoading = true;
 
         try {
-            const res = await fetch('/api/tree');
+            // Pass active templates to backend
+            const params = new URLSearchParams();
+            if (selectedIds.length > 0) {
+                params.append('templates', selectedIds.join(','));
+            }
+            const res = await fetch(`/api/tree?${params.toString()}`);
             const data = await res.json();
             treeNodes = data.tree;
 
@@ -345,6 +356,23 @@
 </script>
 
 <div class="min-h-screen flex flex-col items-center p-8 relative overflow-hidden">
+
+    <!-- GLOBAL LOADING OVERLAY -->
+    {#if isAppLoading || isDetecting}
+        <div class="fixed inset-0 z-[200] bg-slate-950 flex flex-col items-center justify-center" transition:fade>
+             <div class="relative">
+                <div class="w-24 h-24 bg-indigo-500/20 rounded-full animate-ping absolute top-0 left-0"></div>
+                <div class="w-24 h-24 bg-indigo-500/20 rounded-full animate-blob relative flex items-center justify-center border border-indigo-500/50 shadow-[0_0_50px_rgba(99,102,241,0.5)]">
+                    <svg class="w-10 h-10 text-indigo-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                </div>
+             </div>
+             <h2 class="mt-8 text-xl font-bold text-white tracking-widest uppercase animate-pulse">Initializing Forge...</h2>
+             <p class="text-slate-500 text-sm mt-2">Scanning local environment</p>
+        </div>
+    {/if}
 
     <!-- AMBIENT BACKGROUND EFFECTS -->
     <div class="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0">
@@ -632,17 +660,18 @@
 
                 <!-- 1. ROOT SAVE BUTTON -->
                 <button on:click={() => runForge('root')} disabled={isProcessing || selectedIds.length === 0}
-                    class="group relative overflow-hidden h-32 rounded-3xl bg-slate-900 border border-slate-700 hover:border-indigo-500 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed shadow-xl hover:shadow-indigo-500/20 hover:-translate-y-1 flex flex-col justify-center px-8">
+                    class="group relative overflow-hidden min-h-[8rem] rounded-3xl bg-slate-900 border border-slate-700 hover:border-indigo-500 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed shadow-xl hover:shadow-indigo-500/20 hover:-translate-y-1 flex flex-col justify-center px-8 py-6">
 
-                    <!-- Background Icon (Masked/Watermark) -->
-                    <svg class="absolute -right-6 -bottom-8 w-40 h-40 text-indigo-500/10 group-hover:text-indigo-500/20 transition-colors rotate-12 pointer-events-none" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M20 7.917v12.083h-20v-18h6.917l2 2h11.083v3.917h-2v-1.917h-16v14h16v-10h2zM12 11v-2h-2v2h-2v2h2v2h2v-2h2v-2z"/>
+                    <!-- New Icon: Git Branch (Large, rotated, positioned better) -->
+                    <svg class="absolute -right-4 -bottom-6 w-40 h-40 text-indigo-500/5 group-hover:text-indigo-500/15 transition-colors -rotate-12 pointer-events-none" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-4.466 19.59c-.405.078-.534-.171-.534-.384v-1.337c0-1.392-.475-2.399-1.002-2.869 3.274-.365 6.714-1.621 6.714-7.352 0-1.614-.573-2.935-1.536-3.993.154-.396.666-1.927-.147-3.989 0 0-1.24-.396-4.059 1.514-1.174-.326-2.437-.489-3.688-.495-1.248.006-2.514.169-3.693.495-2.814-1.91-4.055-1.514-4.055-1.514-.815 2.062-.303 3.593-.15 3.989-.962 1.058-1.532 2.379-1.532 3.993 0 5.718 3.432 6.991 6.697 7.363-.429.371-.811 1.097-.953 2.119-1.188.534-4.215 1.627-5.056-1.416 0 0-.92-1.665-2.668-1.792 0 0-1.768-.024-.123 1.101 0 0 1.19 1.601 2.031 2.385.67 1.856 3.257 2.677 3.926 2.677v2.004c0 .216-.134.467-.54.381-3.078-1.025-5.288-3.932-5.288-7.318 0-4.286 3.474-7.761 7.761-7.761 4.283 0 7.757 3.475 7.757 7.761 0 3.386-2.214 6.293-5.289 7.318z"/>
                     </svg>
 
                     <div class="relative z-10">
                         <div class="flex items-center justify-between mb-2">
                             <div class="flex items-center gap-2">
-                                <div class="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center text-indigo-400 group-hover:scale-110 transition-transform">
+                                <div class="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center text-indigo-400 group-hover:scale-110 transition-transform shrink-0">
+                                    <!-- Small icon remains the same -->
                                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z"></path></svg>
                                 </div>
                                 {#if gitStatus !== 'none'}
@@ -655,7 +684,7 @@
                             {gitStatus !== 'none' ? "Save to Project" : "Save to Current Folder"}
                         </div>
 
-                        <div class="text-xs text-slate-500 font-mono mt-1 truncate pr-12">
+                        <div class="text-xs text-slate-500 font-mono mt-1 break-all pr-8">
                             {#if gitStatus === 'ignored'}
                                 <span class="text-emerald-500/80">✓ .gitignore configured</span>
                             {:else if gitStatus === 'clean'}
@@ -669,24 +698,24 @@
 
                 <!-- 2. GLOBAL VAULT BUTTON -->
                 <button on:click={() => runForge('global')} disabled={isProcessing || selectedIds.length === 0}
-                    class="group relative overflow-hidden h-32 rounded-3xl bg-slate-900 border border-slate-700 hover:border-cyan-500 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed shadow-xl hover:shadow-cyan-500/20 hover:-translate-y-1 flex flex-col justify-center px-8">
+                    class="group relative overflow-hidden min-h-[8rem] rounded-3xl bg-slate-900 border border-slate-700 hover:border-cyan-500 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed shadow-xl hover:shadow-cyan-500/20 hover:-translate-y-1 flex flex-col justify-center px-8 py-6">
 
-                    <!-- Background Icon -->
-                    <svg class="absolute -right-6 -bottom-6 w-40 h-40 text-cyan-500/10 group-hover:text-cyan-500/20 transition-colors -rotate-12 pointer-events-none" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M22 6h-22v15h22v-15zm-2 13h-18v-11h18v11zm-4-9h-10v1h10v-1zm0 3h-10v1h10v-1zm0 3h-10v1h10v-1zm2-9h2v7h-2v-7z"/>
+                    <!-- New Icon: Safe/Shield/Vault (Large, positioned better) -->
+                    <svg class="absolute -right-8 -bottom-8 w-48 h-48 text-cyan-500/5 group-hover:text-cyan-500/15 transition-colors rotate-6 pointer-events-none" fill="currentColor" viewBox="0 0 24 24">
+                         <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/>
                     </svg>
 
                     <div class="relative z-10">
                         <div class="mb-2">
-                            <div class="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center text-cyan-400 group-hover:scale-110 transition-transform">
+                            <div class="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center text-cyan-400 group-hover:scale-110 transition-transform shrink-0">
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
                             </div>
                         </div>
 
                         <div class="font-bold text-lg text-white group-hover:text-cyan-200 transition-colors">Global Vault</div>
 
-                        <!-- Full Path Subtitle -->
-                        <div class="text-xs text-slate-500 font-mono mt-1 truncate pr-20" title={globalVaultPath}>
+                        <!-- Full Path Subtitle with break-all -->
+                        <div class="text-xs text-slate-500 font-mono mt-1 break-all pr-10 relative" title={globalVaultPath}>
                             {globalVaultPath || '~/.txt-forge-vault'}
                         </div>
                     </div>
@@ -696,32 +725,32 @@
                 <button
                     on:click={handleCustomClick}
                     disabled={isProcessing || selectedIds.length === 0}
-                    class="group relative overflow-hidden h-32 rounded-3xl bg-slate-900 border border-slate-700 hover:border-emerald-500 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed shadow-xl hover:shadow-emerald-500/20 hover:-translate-y-1 flex flex-col justify-center px-8"
+                    class="group relative overflow-hidden min-h-[8rem] rounded-3xl bg-slate-900 border border-slate-700 hover:border-emerald-500 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed shadow-xl hover:shadow-emerald-500/20 hover:-translate-y-1 flex flex-col justify-center px-8 py-6"
                 >
 
-                    <!-- Background Icon -->
-                    <svg class="absolute -right-8 -bottom-8 w-44 h-44 text-emerald-500/10 group-hover:text-emerald-500/20 transition-colors rotate-6 pointer-events-none" fill="currentColor" viewBox="0 0 24 24">
+                    <!-- Kept this icon as you liked it -->
+                    <svg class="absolute -right-8 -bottom-8 w-44 h-44 text-emerald-500/5 group-hover:text-emerald-500/15 transition-colors rotate-6 pointer-events-none" fill="currentColor" viewBox="0 0 24 24">
                         <path d="M12 2c5.514 0 10 4.486 10 10s-4.486 10-10 10-10-4.486-10-10 4.486-10 10-10zm0-2c-6.627 0-12 5.373-12 12s5.373 12 12 12 12-5.373 12-12-5.373-12-12-12zm-1 6h2v8h-2v-8zm1 12.25c-.69 0-1.25-.56-1.25-1.25s.56-1.25 1.25-1.25 1.25.56 1.25 1.25-.56 1.25-1.25 1.25z"/>
                     </svg>
 
                     <div class="relative z-10">
                         <div class="flex items-center justify-between mb-2">
-                            <div class="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:scale-110 transition-transform">
+                            <div class="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:scale-110 transition-transform shrink-0">
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
                             </div>
 
                             <!-- Shift Click Hint -->
                             {#if savedCustomPath}
                                 <span class="hidden group-hover:inline-block text-[10px] font-bold uppercase bg-emerald-900/50 border border-emerald-500/30 text-emerald-300 px-2 py-1 rounded animate-fade-in-up">
-                                    Shift+Click to Quick Save
+                                    Shift+Click
                                 </span>
                             {/if}
                         </div>
 
                         <div class="font-bold text-lg text-white group-hover:text-emerald-200 transition-colors">Custom Location</div>
 
-                        <!-- Last Path Subtitle -->
-                        <div class="text-xs text-slate-500 font-mono mt-1 truncate pr-10" title={savedCustomPath}>
+                        <!-- Last Path Subtitle with break-all -->
+                        <div class="text-xs text-slate-500 font-mono mt-1 break-all pr-6 relative" title={savedCustomPath}>
                             {savedCustomPath ? savedCustomPath : 'Click to browse folders...'}
                         </div>
                     </div>

@@ -37,19 +37,31 @@ export async function pickDirectory() {
     let args = [];
 
     if (platform === 'win32') {
-        // PowerShell script to open FolderBrowserDialog
+        // PowerShell hack: Use OpenFileDialog with 'Select Folder' as filename to force modern UI
         command = 'powershell';
         args = [
             '-NoProfile',
             '-Command',
-            "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.FolderBrowserDialog; $f.ShowDialog() | Out-Null; $f.SelectedPath"
+            `
+            Add-Type -AssemblyName System.Windows.Forms
+            $f = New-Object System.Windows.Forms.OpenFileDialog
+            $f.ValidateNames = $false
+            $f.CheckFileExists = $false
+            $f.CheckPathExists = $true
+            $f.FileName = "Select Folder"
+            $f.Title = "Select Output Folder"
+            $f.Filter = "Folders|no.files"
+            if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+                Write-Host ([System.IO.Path]::GetDirectoryName($f.FileName))
+            }
+            `
         ];
     } else if (platform === 'darwin') {
         // AppleScript to choose folder
         command = 'osascript';
         args = ['-e', 'POSIX path of (choose folder)'];
     } else if (platform === 'linux') {
-        // Zenity or KDialog
+        // Zenity
         command = 'zenity';
         args = ['--file-selection', '--directory'];
     }
@@ -63,10 +75,14 @@ export async function pickDirectory() {
         child.stderr.on('data', (data) => { stderr += data.toString(); });
 
         child.on('close', (code) => {
-            if (code === 0 && stdout.trim()) {
-                resolve(stdout.trim());
+            // Ensure we get a clean string
+            const result = stdout.trim();
+            if (code === 0 && result && result !== "Select Folder") {
+                 // The PowerShell hack sometimes returns the filename appended, ensure we return the directory
+                 // But the script above explicitly prints GetDirectoryName, so result is correct.
+                resolve(result);
             } else {
-                resolve(null); // User cancelled or error
+                resolve(null);
             }
         });
     });
