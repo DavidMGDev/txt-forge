@@ -11,8 +11,13 @@ export async function POST({ request }) {
         customPath: body.customPath,
         templateIds: body.templateIds,
         maxChars: body.maxChars,
-        selectedFiles: body.selectedFiles // <--- PASS THIS
+        selectedFiles: body.selectedFiles
     });
+
+    if (result.success) {
+        // This log will appear in the user's terminal
+        console.log('\x1b[36m%s\x1b[0m', `› Export successful: ${result.outputPath}`);
+    }
 
     return json(result);
 }

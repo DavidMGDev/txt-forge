@@ -1,16 +1,37 @@
 {
   "name": "txt-forge",
-  "version": "0.0.1",
+  "version": "1.0.0",
+  "description": "Turn any code folder into AI-ready text files instantly.",
   "type": "module",
   "bin": {
     "txt-forge": "./bin/cli.js"
   },
+  "files": [
+    "build",
+    "bin",
+    "package.json"
+  ],
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-    "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
+    "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "ai",
+    "llm",
+    "gpt",
+    "context",
+    "codebase",
+    "converter"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/YOUR_USERNAME/txt-forge.git"
   },
   "devDependencies": {
     "@sveltejs/adapter-node": "^5.0.0",
@@ -26,6 +47,8 @@
     "vite": "^5.0.0"
   },
   "dependencies": {
-    "open": "^10.0.0"
+    "open": "^10.0.0",
+    "polka": "^0.5.2",
+    "sirv": "^2.0.0"
   }
 }

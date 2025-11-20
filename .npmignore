@@ -1,8 +1,20 @@
-node_modules
-src
-static
-.svelte-kit
+# Ignore source files
+src/
+static/
+.svelte-kit/
+node_modules/
+
+# Config files not needed at runtime
 vite.config.ts
 tailwind.config.js
 tsconfig.json
+postcss.config.js
+test-detection.js
+
+# Ignore system files
+.DS_Store
+Thumbs.db
+.env
+.env.*
+.git
 .gitignore
