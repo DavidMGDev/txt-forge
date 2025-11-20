@@ -2,6 +2,20 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+    :root {
+        /* More vibrant gradient for the borders */
+        --accretion-gradient: linear-gradient(
+            120deg,
+            #ea580c 0%,   /* Orange-600 */
+            #db2777 25%,  /* Pink-600 */
+            #7c3aed 50%,  /* Violet-600 */
+            #db2777 75%,  /* Pink-600 */
+            #ea580c 100%  /* Orange-600 */
+        );
+    }
+}
+
 @layer utilities {
   .animate-fade-in-up {
     animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
@@ -9,7 +23,13 @@
     transform: translateY(20px);
   }
 
-  /* Custom scrollbar utility for inner containers */
+  /* The Breathing Utility */
+  .bg-accretion {
+      background-image: var(--accretion-gradient);
+      background-size: 400% 400%;
+      animation: accretion 8s ease infinite;
+  }
+
   .custom-scrollbar::-webkit-scrollbar {
       width: 6px;
   }
@@ -25,23 +45,18 @@
   }
 }
 
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 body {
     @apply bg-slate-950 text-slate-200 overflow-x-hidden;
-    /* Magma/Accretion Disk ambient glow */
-    background-image:
-        radial-gradient(circle at 50% 0%, rgba(249, 115, 22, 0.08) 0%, transparent 60%),
-        radial-gradient(circle at 10% 10%, rgba(220, 38, 38, 0.05) 0%, transparent 40%),
-        radial-gradient(circle at 90% 10%, rgba(124, 58, 237, 0.05) 0%, transparent 40%);
+
+    /*
+       The Background Breathing Effect
+       We use the same gradient logic but heavily blurred and transparent
+       so it syncs with the borders but sits in the background.
+    */
+    background:
+        radial-gradient(circle at 50% 0%, #ea580c15 0%, transparent 70%), /* Top Orange Glow */
+        radial-gradient(circle at 0% 100%, #7c3aed15 0%, transparent 50%), /* Bottom Left Violet */
+        #020617; /* Slate 950 Base */
+
     background-attachment: fixed;
 }
