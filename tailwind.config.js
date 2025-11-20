@@ -4,8 +4,9 @@ export default {
   theme: {
     extend: {
       animation: {
-        'text-gradient': 'text-gradient 6s ease infinite',
-        'blob': 'blob 10s infinite',
+        /* UPDATED: 6s -> 3s and 10s -> 7s */
+        'text-gradient': 'text-gradient 3s ease infinite',
+        'blob': 'blob 7s infinite',
         'fade-in-up': 'fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards',
         'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
       },

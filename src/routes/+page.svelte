@@ -249,8 +249,7 @@
     async function exitApp() {
 
         isShuttingDown = true;
-
-        showSuccessDialog = false;
+        // UPDATED: Removed 'showSuccessDialog = false;' to prevent UI flash
 
         
 
@@ -532,11 +531,12 @@
 
     <div class="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0">
 
-        <div class="absolute top-[-20%] left-1/2 -translate-x-1/2 w-[800px] h-[600px] bg-orange-600/10 rounded-full blur-[120px] animate-blob mix-blend-screen"></div>
+        <!-- UPDATED: Increased opacity for all blobs (/10 -> /20 and /20 -> /30) -->
+        <div class="absolute top-[-20%] left-1/2 -translate-x-1/2 w-[800px] h-[600px] bg-orange-600/20 rounded-full blur-[120px] animate-blob mix-blend-screen"></div>
 
-        <div class="absolute top-[20%] left-[10%] w-[500px] h-[500px] bg-rose-700/10 rounded-full blur-[100px] animate-blob animation-delay-2000 mix-blend-screen"></div>
+        <div class="absolute top-[20%] left-[10%] w-[500px] h-[500px] bg-rose-700/20 rounded-full blur-[100px] animate-blob animation-delay-2000 mix-blend-screen"></div>
 
-        <div class="absolute bottom-[10%] right-[10%] w-[600px] h-[600px] bg-violet-900/20 rounded-full blur-[100px] animate-blob animation-delay-4000 mix-blend-screen"></div>
+        <div class="absolute bottom-[10%] right-[10%] w-[600px] h-[600px] bg-violet-900/30 rounded-full blur-[100px] animate-blob animation-delay-4000 mix-blend-screen"></div>
 
     </div>
 
@@ -1114,7 +1114,8 @@
 
                         <div class="text-[10px] text-slate-500 font-mono mt-1 break-all pr-10 relative uppercase tracking-wider" title={globalVaultPath}>
 
-                            ~/.txt-forge-vault
+                            <!-- UPDATED: Use the variable, fallback to default if empty -->
+                            {globalVaultPath || '~/.txt-forge-vault'}
 
                         </div>
 
