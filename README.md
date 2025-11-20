@@ -62,4 +62,4 @@ Issues and Pull Requests are welcome!
 
 ## 📝 License
 
-MIT © [Your Name]
+MIT © DavidMGDev
