@@ -52,6 +52,9 @@
 
     let treeExpanded = $state(false);
 
+    // NEW: Toggle for Tree Generation context
+    let includeIgnoredInTree = $state(false);
+
     let selectedFilePaths: Set<string> = $state(new Set());
 
     // NEW: Cache map for instant toggling performance
@@ -405,7 +408,7 @@
 
         const newSet = new Set(selectedFilePaths);
 
-        
+
 
         // Determine the new state
 
@@ -448,6 +451,148 @@
         // 3. Trigger Reactivity once
 
         selectedFilePaths = newSet;
+
+    }
+
+    // NEW: Handle Lazy Load
+
+    async function handleLoadChildren(folderPath: string) {
+
+        try {
+
+            const params = new URLSearchParams();
+
+            params.append('path', folderPath);
+
+            if (selectedIds.length > 0) params.append('templates', selectedIds.join(','));
+
+
+
+            const res = await fetch(`/api/tree?${params.toString()}`);
+
+            const data = await res.json();
+
+
+
+            if (data.tree && data.tree.length > 0) {
+
+                // We need to insert these children into the existing treeNodes structure
+
+                // Helper to find and update
+
+                const updateNode = (nodes: any[]) => {
+
+                    for (const node of nodes) {
+
+                        if (node.path === folderPath) {
+
+                            node.children = data.tree;
+
+                            // --- FIX: Mark as no longer massive so it behaves like a normal open folder ---
+
+                            node.isMassive = false;
+
+                            // ---------------------------------------------------------------------------
+
+                            return true;
+
+                        }
+
+                        if (node.children && node.children.length > 0) {
+
+                            if (updateNode(node.children)) return true;
+
+                        }
+
+                    }
+
+                    return false;
+
+                };
+
+
+
+                updateNode(treeNodes);
+
+
+
+                // Re-run caching for new nodes
+
+                // We only need to process the NEW subtree
+
+                const processNode = (nodes: any[], parentIgnored: boolean) => {
+
+                    const paths: string[] = [];
+
+                    for (const node of nodes) {
+
+                        fileTypeMap.set(node.path, node.type);
+
+                        paths.push(node.path);
+
+                        const isEffectivelyIgnored = node.isIgnored || parentIgnored;
+
+
+
+                        // Do NOT auto-select Massive children (user just expanded it, doesn't mean select)
+
+                        // Unless the parent was ALREADY selected?
+
+                        // Logic: If parent (folderPath) is in selectedFilePaths, we should add these?
+
+                        if (selectedFilePaths.has(folderPath) && !isEffectivelyIgnored && !node.isMedia) {
+
+                             selectedFilePaths.add(node.path);
+
+                             // Force reactivity
+
+                             selectedFilePaths = new Set(selectedFilePaths);
+
+                        }
+
+                        if (node.type === 'folder' && node.children) {
+
+                            const kids = processNode(node.children, isEffectivelyIgnored);
+
+                            folderDescendants.set(node.path, kids);
+
+                            paths.push(...kids);
+
+                        }
+
+                    }
+
+                    return paths;
+
+                };
+
+
+
+                // We need parent ignored state.
+
+                // Approximate: Assume false for lazy loaded massive folders (simplification)
+
+                const newPaths = processNode(data.tree, false);
+
+
+
+                // Update the parent's descendant cache in the Map
+
+                folderDescendants.set(folderPath, newPaths);
+
+
+
+                // Trigger Svelte reactivity
+
+                treeNodes = [...treeNodes];
+
+            }
+
+        } catch (e) {
+
+            console.error("Failed to load subtree", e);
+
+        }
 
     }
 
@@ -523,7 +668,9 @@
 
                     maxChars,
 
-                    selectedFiles: payloadFiles
+                    selectedFiles: payloadFiles,
+
+                    includeIgnoredInTree // <--- Added param
 
                 })
 
@@ -755,11 +902,12 @@
 
         </h1>
 
-        <div class="inline-flex items-center gap-2 bg-black/40 backdrop-blur-md px-5 py-2.5 rounded-full border border-white/5 shadow-lg">
+        <!-- UPDATED: Removed 'inline-flex', 'truncate', and 'max-w' constraints. Added 'break-all' -->
+        <div class="flex flex-col md:flex-row items-center justify-center gap-2 bg-black/40 backdrop-blur-md px-6 py-3 rounded-2xl border border-white/5 shadow-lg max-w-[90vw]">
 
-            <span class="text-slate-500 text-[10px] uppercase font-bold tracking-[0.2em]">Target:</span>
+            <span class="text-slate-500 text-[10px] uppercase font-bold tracking-[0.2em] whitespace-nowrap">Target:</span>
 
-            <span class="text-orange-300 font-mono text-xs truncate max-w-[300px] drop-shadow-md" title={cwd}>
+            <span class="text-orange-300 font-mono text-xs break-all text-center drop-shadow-md leading-relaxed">
 
                 {cwd || 'Scanning...'}
 
@@ -779,7 +927,9 @@
 
             <!-- TEMPLATES CARD -->
 
-            <div class="bg-slate-900/40 backdrop-blur-xl border border-white/10 rounded-3xl p-8 shadow-2xl relative overflow-hidden">
+            <!-- UPDATED: Removed 'overflow-hidden' so tooltips can popup outside the box.
+                 Added 'z-20' to ensure it sits above other elements when tooltips open. -->
+            <div class="bg-slate-900/40 backdrop-blur-xl border border-white/10 rounded-3xl p-8 shadow-2xl relative z-20">
 
                 <div class="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-orange-500/20 to-transparent"></div>
 
@@ -927,6 +1077,43 @@
 
                     </div>
 
+                    <!-- NEW TOGGLE UI -->
+                    <div class="flex items-center mr-4 group relative">
+
+                         <label class="flex items-center gap-2 cursor-pointer">
+
+                            <div class="relative">
+
+                                <input type="checkbox" bind:checked={includeIgnoredInTree} class="sr-only peer">
+
+                                <div class="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-slate-400 after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-600 peer-checked:after:bg-white"></div>
+
+                            </div>
+
+                            <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500 peer-checked:text-orange-200 transition-colors">
+
+                                Full Context
+
+                            </span>
+
+                         </label>
+
+
+
+                         <!-- Tooltip -->
+
+                         <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 bg-black border border-white/10 p-3 rounded-lg shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 text-[10px] text-slate-400 leading-relaxed">
+
+                            <strong class="text-orange-400 block mb-1">Visual Context Mode</strong>
+
+                            Includes ignored files (like package-lock.json) in the Source-Tree.txt map for context, but does NOT merge their content. Massive folders (node_modules) remain excluded.
+
+                         </div>
+
+                    </div>
+
+                    <!-- END TOGGLE UI -->
+
                     <button
 
                         on:click={scrollToTree}
@@ -966,6 +1153,8 @@
                                         {folderDescendants}
 
                                         onToggle={handleTreeToggle}
+
+                                        onLoadChildren={handleLoadChildren}
 
                                     />
 

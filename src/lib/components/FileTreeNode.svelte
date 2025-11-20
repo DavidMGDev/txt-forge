@@ -6,25 +6,21 @@
 
     export let selectedPaths: Set<string>;
 
-    // NEW PROP
-
     export let folderDescendants: Map<string, string[]>;
 
     export let onToggle: (path: string, isFolder: boolean, forcedState?: boolean) => void;
 
-    // State
+    // NEW PROP: Closure to handle lazy loading
+
+    export let onLoadChildren: (path: string) => Promise<void>;
 
     let expanded = false;
 
-    // --- UPDATED LOGIC ---
+    let isLoading = false; // Local loading state
 
-    
-
-    // 1. Am I checked explicitly?
+    // ... (Keep Check Logic) ...
 
     $: isSelfChecked = selectedPaths.has(node.path);
-
-    // 2. Calculate descendants status to determine Indeterminate state
 
     let isIndeterminate = false;
 
@@ -34,33 +30,25 @@
 
         if (node.type === 'folder') {
 
-            // folderDescendants contains all children (files and folders)
-
             const allDescendants = folderDescendants.get(node.path) || [];
 
-            
+            // Handle Massive/Empty case:
 
-            if (allDescendants.length > 0) {
+            // If massive and no descendants loaded, relies purely on Self Check
 
-                // Count how many are currently in selectedPaths
+            if (allDescendants.length === 0 && node.isMassive) {
 
-                const selectedCount = allDescendants.reduce((acc, path) => {
+                isFullyChecked = isSelfChecked;
 
-                    return acc + (selectedPaths.has(path) ? 1 : 0);
+                isIndeterminate = false;
 
-                }, 0);
+            } else if (allDescendants.length > 0) {
 
-                
-
-                // If self is checked, we add 1
+                const selectedCount = allDescendants.reduce((acc, path) => acc + (selectedPaths.has(path) ? 1 : 0), 0);
 
                 const totalSelected = selectedCount + (isSelfChecked ? 1 : 0);
 
-                // Total items = descendants + self
-
                 const totalItems = allDescendants.length + 1;
-
-                // Indeterminate if we have some, but not all
 
                 isIndeterminate = totalSelected > 0 && totalSelected < totalItems;
 
@@ -68,37 +56,51 @@
 
             } else {
 
-                // Empty folder
-
                 isFullyChecked = isSelfChecked;
-
-                isIndeterminate = false;
 
             }
 
         } else {
 
-            // It is a file
-
             isFullyChecked = isSelfChecked;
-
-            isIndeterminate = false;
 
         }
 
     }
 
+    // UPDATED: Expandable if folder, even if children array is empty (Massive)
+
     $: hasChildren = node.children && node.children.length > 0;
 
-    $: isExpandable = hasChildren && node.depth < 7;
+    $: isExpandable = node.type === 'folder'; // Always expandable if folder
+
+    async function handleExpand() {
+
+        if (!isExpandable) return;
+
+        
+
+        // If expanding a massive folder with no children, Fetch!
+
+        if (!expanded && node.isMassive && (!node.children || node.children.length === 0)) {
+
+            isLoading = true;
+
+            expanded = true; // Open immediately to show spinner
+
+            await onLoadChildren(node.path);
+
+            isLoading = false;
+
+        } else {
+
+            expanded = !expanded;
+
+        }
+
+    }
 
     function handleToggle() {
-
-        // If currently indeterminate, we want to select ALL (force true)
-
-        // If currently checked, we want to unselect ALL (force false)
-
-        // If unchecked, select ALL
 
         const nextState = isIndeterminate ? true : !isSelfChecked;
 
@@ -114,65 +116,129 @@
         style="padding-left: {(node.depth * 1.25) + 0.5}rem"
     >
 
-        <!-- Expander Arrow -->
+        <!-- UPDATED Expander -->
         <button
-            on:click={() => expanded = !expanded}
+            on:click|stopPropagation={handleExpand}
             class="w-5 h-5 flex items-center justify-center rounded hover:bg-white/10 text-slate-500 transition-transform duration-200 {expanded ? 'rotate-90 text-orange-400' : ''} {isExpandable ? '' : 'invisible'}"
         >
-            ▶
+
+            {#if isLoading}
+                 <!-- Tiny Spinner -->
+                 <svg class="animate-spin h-3 w-3 text-orange-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+            {:else}
+                ▶
+            {/if}
+
         </button>
 
-        <!-- Checkbox -->
+        <!-- Checkbox (Keep existing) -->
         <button
             on:click|stopPropagation={handleToggle}
             class="w-4 h-4 rounded border flex items-center justify-center transition-all
+
             {isFullyChecked || isIndeterminate
+
                 ? 'bg-orange-600 border-orange-600 text-white shadow-[0_0_10px_rgba(2ea,88,12,0.4)]'
+
                 : 'border-slate-700 bg-slate-900/50 hover:border-orange-500/50'}"
         >
+
             {#if isFullyChecked}
-                <!-- Checkmark -->
+
                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+
             {:else if isIndeterminate}
-                <!-- Indeterminate Dash -->
+
                 <div class="w-2.5 h-0.5 bg-white rounded-full"></div>
+
             {/if}
+
         </button>
 
-        <!-- Icon & Name -->
-        <div class="flex items-center gap-2 text-sm font-mono truncate cursor-pointer flex-1" on:click={() => isExpandable ? expanded = !expanded : handleToggle()}>
+        <!-- Name -->
+
+        <div class="flex items-center gap-2 text-sm font-mono truncate cursor-pointer flex-1" on:click={handleExpand}>
+
             {#if node.type === 'folder'}
+
                 <span class="text-amber-500 opacity-90 drop-shadow-md">📁</span>
+
                 <span class="{isFullyChecked || isIndeterminate ? 'text-orange-100' : 'text-slate-500'} group-hover:text-orange-50 transition-colors">{node.name}</span>
+
+                
+
+                <!-- NEW: Massive Label -->
+
+                {#if node.isMassive}
+
+                    <span class="ml-2 text-[9px] uppercase border border-amber-900/50 text-amber-500/80 px-1.5 rounded bg-amber-950/30 tracking-wider">Massive</span>
+
+                {/if}
+
             {:else}
+
                 <span class="opacity-80 {node.isMedia ? 'grayscale opacity-50' : 'text-orange-400/80'}">
+
                     {node.isMedia ? '🖼️' : '📄'}
+
                 </span>
+
                 <span class="{isFullyChecked ? 'text-orange-200/80' : 'text-slate-500'} group-hover:text-white transition-colors {node.isMedia && !isFullyChecked ? 'italic opacity-50' : ''}">
+
                     {node.name}
+
                 </span>
+
             {/if}
+
             {#if node.isIgnored && !isFullyChecked}
+
                 <span class="ml-2 text-[9px] uppercase border border-slate-800 text-slate-600 px-1.5 rounded bg-slate-950">Ignored</span>
+
             {/if}
-            <!-- Media Label -->
+
             {#if node.isMedia && !isFullyChecked}
+
                 <span class="ml-2 text-[9px] uppercase border border-slate-800 text-slate-700 px-1.5 rounded bg-slate-950">Media</span>
+
             {/if}
+
         </div>
+
     </div>
 
     <!-- Children -->
-    {#if expanded && hasChildren}
+
+    <!-- Check hasChildren OR isMassive (to keep div ready for injection) -->
+
+    {#if expanded && (hasChildren || node.isMassive)}
+
         <div transition:slide|local={{ duration: 200 }}>
-            {#each node.children as child (child.path)}
-                <svelte:self
-                    node={child}
-                    {selectedPaths}
-                    {folderDescendants}
-                    {onToggle}
-                />
-            {/each}
+
+            {#if node.children}
+
+                {#each node.children as child (child.path)}
+
+                    <svelte:self
+
+                        node={child}
+
+                        {selectedPaths}
+
+                        {folderDescendants}
+
+                        {onToggle}
+
+                        {onLoadChildren}
+
+                    />
+
+                {/each}
+
+            {/if}
+
         </div>
+
     {/if}
+
 </div>

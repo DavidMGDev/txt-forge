@@ -16,6 +16,8 @@ export interface ProcessConfig {
     maxChars: number;
     // NEW: Optional explicit list of files to process (overrides templates)
     selectedFiles?: string[];
+    // NEW: Toggle for tree context
+    includeIgnoredInTree?: boolean;
 }
 
 interface ProcessResult {
@@ -196,54 +198,64 @@ export async function processFiles(config: ProcessConfig): Promise<ProcessResult
     try {
         const sourceRoot = path.resolve(config.sourceDir);
         const projectName = path.basename(sourceRoot);
-        // --- DETERMINE FILES TO PROCESS ---
+
+        // --- DETERMINE FILES TO PROCESS (OFFLOADED LOGIC) ---
 
         let filesToProcess: string[] = [];
-        let sourceTreeContent = "";
-        if (config.selectedFiles && config.selectedFiles.length > 0) {
-            // MODE A: File Tree Selection (Explicit)
-            // We use the list provided by the frontend directly.
-            // The frontend sends RELATIVE paths.
+        let filesForTree: string[] = []; // Separate list for the visual tree
 
-            // 1. Verify existence and resolve absolute paths
+        // 1. Setup Ignores
+        const ignorePatterns = new Set<string>(['.git', 'node_modules', 'TXT-Forge', '.txt-forge-vault']);
+        const massiveFolders = new Set<string>(['node_modules', '.git', '.svelte-kit', '.next', 'dist', 'build', 'vendor']); // Explicit massive folders
+
+        const activeTemplates = templates.filter(t => config.templateIds.includes(t.id));
+        activeTemplates.forEach(t => t.ignores.forEach(ign => ignorePatterns.add(ign.replace(/\/$/, ''))));
+
+        // 2. Determine Content Files
+        if (config.selectedFiles && config.selectedFiles.length > 0) {
+            // MODE A: Explicit Selection
+
+            const explicitFiles = new Set<string>();
             for (const relPath of config.selectedFiles) {
                 const fullPath = path.join(sourceRoot, relPath);
                 try {
                     const stat = await fs.stat(fullPath);
-                    if (stat.isFile()) {
-                        filesToProcess.push(fullPath);
+                    if (stat.isDirectory()) {
+                        const dirFiles = await scanFiles(sourceRoot, fullPath, [], Array.from(ignorePatterns));
+                        dirFiles.forEach(f => explicitFiles.add(f));
+                    } else if (stat.isFile()) {
+                        explicitFiles.add(fullPath);
                     }
-                } catch (e) {
-                    // File might have been deleted since scan
-                }
+                } catch (e) { }
             }
-
-            // 2. Generate Source-Tree.txt content
-            // We need to re-scan briefly or reconstruct the tree structure to print it nicely.
-            // For performance, we re-scan but filter using the Set.
-            const fullTree = await scanDirectory(sourceRoot, sourceRoot);
-            sourceTreeContent = generateTreeString(fullTree, new Set(config.selectedFiles));
+            filesToProcess = Array.from(explicitFiles);
         } else {
-            // MODE B: Template Detection (Legacy/Fallback)
-            // ... existing logic ...
-            const activeTemplates = templates.filter(t => config.templateIds.includes(t.id));
-            if (activeTemplates.length === 0) throw new Error("No templates selected.");
-            const validExtensions = new Set<string>();
-            const ignorePatterns = new Set<string>(['.git', 'node_modules', 'TXT-Forge', '.txt-forge-vault']);
-            activeTemplates.forEach(t => {
-                t.extensions.forEach(ext => validExtensions.add(ext));
-                t.ignores.forEach(ign => ignorePatterns.add(ign.replace(/\/$/, '')));
-            });
-
-            filesToProcess = await scanFiles(sourceRoot, sourceRoot, Array.from(validExtensions), Array.from(ignorePatterns));
-
-            // Generate simple list for tree txt in this mode
-            sourceTreeContent = filesToProcess.map(f => path.relative(sourceRoot, f)).join('\n');
+             // MODE B: Template Fallback
+             const validExtensions = new Set<string>();
+             activeTemplates.forEach(t => t.extensions.forEach(ext => validExtensions.add(ext)));
+             filesToProcess = await scanFiles(sourceRoot, sourceRoot, Array.from(validExtensions), Array.from(ignorePatterns));
         }
+
+        // 3. Determine Tree Files (The Visual Map)
+        if (config.includeIgnoredInTree) {
+            // If toggle ON: We want a broader scan.
+            // We scan everything, BUT we stop at massive folders.
+            // We pass an EMPTY extension list (accept all extensions).
+            // We pass a minimal ignore list (only massive folders).
+            const massiveIgnores = Array.from(massiveFolders);
+            filesForTree = await scanFiles(sourceRoot, sourceRoot, [], massiveIgnores);
+        } else {
+            // If toggle OFF: Tree matches content exactly.
+            filesForTree = [...filesToProcess];
+        }
+
+        // Sort tree alphabetically for display
+        filesForTree.sort();
+        const sourceTreeContent = filesForTree.map(f => path.relative(sourceRoot, f)).join('\n');
 
         if (filesToProcess.length === 0) return { success: false, message: "No matching files found.", outputPath: '', files: [] };
 
-        // --- PREPARE OUTPUT ---
+        // --- PREPARE OUTPUT (Keep existing logic) ---
 
         let outputBaseDir = '';
         if (config.saveMode === 'root') outputBaseDir = path.join(sourceRoot, 'TXT-Forge');
@@ -251,42 +263,40 @@ export async function processFiles(config: ProcessConfig): Promise<ProcessResult
         else if (config.saveMode === 'custom' && config.customPath) outputBaseDir = path.resolve(config.customPath);
         else throw new Error("Invalid save path configuration.");
 
-        if (config.saveMode === 'root') {
-            await ensureGitIgnore(sourceRoot);
-        }
+        if (config.saveMode === 'root') await ensureGitIgnore(sourceRoot);
 
         const mergedDir = path.join(outputBaseDir, 'Merged');
         await cleanDirectory(mergedDir);
 
-        // --- READ & MERGE ---
+        // --- READ & MERGE (Keep existing logic) ---
 
         const fileMap: { original: string, relPath: string, content: string }[] = [];
 
         for (const filePath of filesToProcess) {
             try {
+                // Size check for massive files check inside export
+                const stats = await fs.stat(filePath);
+                if (stats.size > 1024 * 1024 * 5) { // Skip > 5MB in content processing
+                     console.warn(`Skipping huge file > 5MB: ${filePath}`);
+                     continue;
+                }
+
                 const content = await fs.readFile(filePath, 'utf-8');
                 const relPath = path.relative(sourceRoot, filePath);
                 fileMap.push({ original: filePath, relPath, content });
-            } catch (e) {
-                console.warn(`Skipping binary or unreadable file: ${filePath}`);
-            }
+            } catch (e) { }
         }
 
-        // --- GENERATE FILES ---
+        // --- GENERATE FILES (Keep existing) ---
 
-        // 1. Write Source-Tree.txt
-        // WRAPPER UPDATE: We wrap the tree in a "repository/" root folder string.
         const treeBody = sourceTreeContent.trim();
-        // Indent the generated body to look like it's inside the repository folder
         const indentedBody = treeBody.split('\n').map(line => '│   ' + line).join('\n');
         const finalTreeContent = `repository/\n${indentedBody}`;
 
         await fs.writeFile(path.join(mergedDir, 'Source-Tree.txt'), finalTreeContent, 'utf-8');
 
-        // 2. Merge Content
         const generatedFiles = await mergeFiles(fileMap, mergedDir, config.maxChars);
 
-        // Add Source-Tree.txt to the list of generated files for the UI return
         generatedFiles.unshift('Source-Tree.txt');
 
         return {
@@ -362,13 +372,11 @@ async function deepScanExtensions(dir: string, depth: number): Promise<Set<strin
 async function scanFiles(rootDir: string, currentDir: string, extensions: string[], ignores: string[]): Promise<string[]> {
     let results: string[] = [];
     const list = await fs.readdir(currentDir, { withFileTypes: true });
-
     for (const entry of list) {
         const fullPath = path.join(currentDir, entry.name);
         const relPath = path.relative(rootDir, fullPath);
 
-        // Check Ignores (Simple match against parts of the path)
-        // Logic: If any part of the path matches an ignore pattern
+        // ... (Keep existing ignore logic) ...
         const pathParts = relPath.split(path.sep);
         const isIgnored = pathParts.some(part =>
             ignores.some(ign => {
@@ -376,14 +384,14 @@ async function scanFiles(rootDir: string, currentDir: string, extensions: string
                 return part === ign || part.toLowerCase() === ign.toLowerCase();
             })
         );
-
         if (isIgnored) continue;
 
         if (entry.isDirectory()) {
             results = results.concat(await scanFiles(rootDir, fullPath, extensions, ignores));
         } else {
             const ext = path.extname(entry.name);
-            if (extensions.includes(ext)) {
+            // UPDATED: If extensions list is empty, accept all (used for folder selection)
+            if (extensions.length === 0 || extensions.includes(ext)) {
                 results.push(fullPath);
             }
         }
@@ -391,6 +399,10 @@ async function scanFiles(rootDir: string, currentDir: string, extensions: string
     return results;
 }
 
+/**
+ * BIN PACKING MERGE (Best Fit Decreasing)
+ * Minimizes the number of output files by filling gaps intelligently.
+ */
 async function mergeFiles(
     files: { relPath: string, content: string }[],
     outputDir: string,
@@ -398,90 +410,134 @@ async function mergeFiles(
 ): Promise<string[]> {
 
     const createdFiles: string[] = [];
-    let buffer = "";
-    let bufferIndex: string[] = [];
-    let bufferFileCount = 0; // NEW: Track number of files in buffer
     let fileIndex = 1;
 
-    // Flush function for STANDARD files
-
-    const flushBuffer = async () => {
-        if (!buffer) return;
-        const indexHeader = "--- INDEX ---\n" + bufferIndex.join('\n') + "\n" + "-".repeat(30) + "\n\n";
-
-        // FORMAT: Source-{Index} ({Count} Files).txt
-        const filename = `Source-${fileIndex} (${bufferFileCount} Files).txt`;
-
-        await fs.writeFile(path.join(outputDir, filename), indexHeader + buffer, 'utf-8');
-        createdFiles.push(filename);
-
-        // Reset
-        buffer = "";
-        bufferIndex = [];
-        bufferFileCount = 0;
-        fileIndex++;
-    };
-
-    for (const file of files) {
-        const fileHeader = `\n${'='.repeat(50)}\nFile: ${file.relPath}\n${'='.repeat(50)}\n\n`;
-        const fullEntry = fileHeader + file.content + "\n\n";
-
-        // --- CASE 1: HUGE FILE (MULTIPART) ---
-        if (fullEntry.length > maxChars) {
-            // 1. Flush whatever normal files we had in the buffer first
-            await flushBuffer();
-            // 2. Process this file strictly as a Multipart set
-            // "Multipart files only contain one file"
-            let remaining = file.content;
-            let part = 1;
-            const totalParts = Math.ceil(remaining.length / (maxChars - 500));
-            while (remaining.length > 0) {
-                const header = `\n${'='.repeat(50)}\nFile: ${file.relPath} (Part ${part}/${totalParts})\n${'='.repeat(50)}\n\n`;
-                const availableSpace = maxChars - header.length;
-
-                // FORMAT: Source-{Index}.{Part} (Multipart File).txt
-                const filename = `Source-${fileIndex}.${part} (Multipart File).txt`;
-                let contentToWrite = "";
-
-                if (remaining.length <= availableSpace) {
-                    contentToWrite = header + remaining + "\n\n";
-                    remaining = "";
-                } else {
-                    // Smart Split
-                    let splitIdx = -1;
-                    const searchWindow = remaining.substring(0, availableSpace);
-                    let match;
-                    SAFE_SPLIT_REGEX.lastIndex = 0;
-                    while ((match = SAFE_SPLIT_REGEX.exec(searchWindow)) !== null) {
-                        splitIdx = match.index;
-                    }
-                    if (splitIdx === -1) splitIdx = searchWindow.lastIndexOf('\n');
-                    if (splitIdx === -1) splitIdx = availableSpace;
-                    contentToWrite = header + remaining.substring(0, splitIdx) + "\n\n";
-                    remaining = remaining.substring(splitIdx);
-                }
-
-                const indexHeader = "--- INDEX ---\n" + `${file.relPath} (Part ${part}/${totalParts})` + "\n" + "-".repeat(30) + "\n\n";
-                await fs.writeFile(path.join(outputDir, filename), indexHeader + contentToWrite, 'utf-8');
-                createdFiles.push(filename);
-
-                part++;
-            }
-            // Increment master index after finishing the multipart file
-            fileIndex++;
-            continue;
-        }
-
-        // --- CASE 2: STANDARD APPEND ---
-        if ((buffer.length + fullEntry.length) > maxChars) {
-            await flushBuffer();
-        }
-
-        buffer += fullEntry;
-        bufferIndex.push(file.relPath);
-        bufferFileCount++;
+    // 1. Prepare Items with Headers (Calculate total size)
+    interface ProcessItem {
+        relPath: string;
+        fullText: string;
+        size: number;
+        isMultipart: boolean;
     }
 
-    await flushBuffer();
+    const items: ProcessItem[] = [];
+    const multipartItems: { relPath: string, content: string }[] = [];
+
+    for (const file of files) {
+        const header = `\n${'='.repeat(50)}\nFile: ${file.relPath}\n${'='.repeat(50)}\n\n`;
+        const fullText = header + file.content + "\n\n";
+
+        if (fullText.length > maxChars) {
+            // Handle Huge files separately
+            multipartItems.push(file);
+        } else {
+            items.push({
+                relPath: file.relPath,
+                fullText: fullText,
+                size: fullText.length,
+                isMultipart: false
+            });
+        }
+    }
+
+    // 2. Sort Standard Items (Largest to Smallest) for BFD Algorithm
+    items.sort((a, b) => b.size - a.size);
+
+    // 3. Bin Packing
+    interface Bin {
+        currentSize: number;
+        items: ProcessItem[];
+    }
+
+    const bins: Bin[] = [];
+
+    for (const item of items) {
+        // Find the tightest bin that fits this item (Best Fit)
+        let bestBinIndex = -1;
+        let minRemainingSpace = Infinity;
+
+        for (let i = 0; i < bins.length; i++) {
+            const remaining = maxChars - bins[i].currentSize;
+            if (remaining >= item.size) {
+                if (remaining < minRemainingSpace) {
+                    minRemainingSpace = remaining;
+                    bestBinIndex = i;
+                }
+            }
+        }
+
+        if (bestBinIndex !== -1) {
+            // Place in existing bin
+            bins[bestBinIndex].items.push(item);
+            bins[bestBinIndex].currentSize += item.size;
+        } else {
+            // Create new bin
+            bins.push({
+                currentSize: item.size,
+                items: [item]
+            });
+        }
+    }
+
+    // 4. Process Multipart Files (They get their own unique bins/files)
+    // We process these immediately to get them out of the way
+    for (const file of multipartItems) {
+        let remaining = file.content;
+        let part = 1;
+        const totalParts = Math.ceil(remaining.length / (maxChars - 500)); // 500 buffer for headers
+
+        while (remaining.length > 0) {
+            const header = `\n${'='.repeat(50)}\nFile: ${file.relPath} (Part ${part}/${totalParts})\n${'='.repeat(50)}\n\n`;
+            const availableSpace = maxChars - header.length;
+
+            // Unique ID for multiparts
+            const filename = `Source-${fileIndex}.${part} (Multipart File).txt`;
+
+            let contentToWrite = "";
+
+            if (remaining.length <= availableSpace) {
+                contentToWrite = header + remaining + "\n\n";
+                remaining = "";
+            } else {
+                // Smart Split
+                let splitIdx = -1;
+                const searchWindow = remaining.substring(0, availableSpace);
+                let match;
+                SAFE_SPLIT_REGEX.lastIndex = 0;
+                while ((match = SAFE_SPLIT_REGEX.exec(searchWindow)) !== null) {
+                    splitIdx = match.index;
+                }
+                if (splitIdx === -1) splitIdx = searchWindow.lastIndexOf('\n');
+                if (splitIdx === -1) splitIdx = availableSpace;
+                contentToWrite = header + remaining.substring(0, splitIdx) + "\n\n";
+                remaining = remaining.substring(splitIdx);
+            }
+
+            const indexHeader = "--- INDEX ---\n" + `${file.relPath} (Part ${part}/${totalParts})` + "\n" + "-".repeat(30) + "\n\n";
+            await fs.writeFile(path.join(outputDir, filename), indexHeader + contentToWrite, 'utf-8');
+            createdFiles.push(filename);
+            part++;
+        }
+        fileIndex++;
+    }
+
+    // 5. Write Bins (Standard Files)
+    for (const bin of bins) {
+        const filename = `Source-${fileIndex} (${bin.items.length} Files).txt`;
+
+        // Build Index
+        const indexList = bin.items.map(i => i.relPath).join('\n');
+        const indexHeader = "--- INDEX ---\n" + indexList + "\n" + "-".repeat(30) + "\n\n";
+
+        // Build Body (Sort alphabetically inside the file for readability, or keep size order?
+        // Typically alphabetical is better for reading context within a single file)
+        bin.items.sort((a, b) => a.relPath.localeCompare(b.relPath));
+        const body = bin.items.map(i => i.fullText).join('');
+
+        await fs.writeFile(path.join(outputDir, filename), indexHeader + body, 'utf-8');
+        createdFiles.push(filename);
+        fileIndex++;
+    }
+
     return createdFiles;
 }

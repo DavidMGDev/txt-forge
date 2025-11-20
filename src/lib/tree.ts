@@ -10,8 +10,9 @@ export interface TreeNode {
     type: 'file' | 'folder';
     children?: TreeNode[];
     isIgnored: boolean; // True if matched by .gitignore or system hidden
-    // ADD THIS:
     isMedia: boolean;
+    // ADD THIS:
+    isMassive: boolean;
     depth: number;
 }
 
@@ -39,6 +40,17 @@ const MEDIA_EXTENSIONS = new Set([
     '.ttf', '.otf', '.woff', '.woff2', '.eot'
 ]);
 
+const MASSIVE_FOLDERS = new Set([
+    'node_modules', 'bower_components', 'vendor',
+    '.git', '.svn', '.hg',
+    '.svelte-kit', '.next', '.nuxt', '.output',
+    'dist', 'build', 'out', 'target',
+    'CMakeFiles', '.gradle', '.idea', '.vscode'
+]);
+
+const MAX_FOLDER_ITEMS = 150;
+const MAX_FILE_SIZE_MB = 1 * 1024 * 1024; // 1MB
+
 /**
  * specific ignore logic for the tree view (lighter than the full processor)
  */
@@ -50,22 +62,44 @@ export async function scanDirectory(
     rootDir: string,
     currentDir: string,
     depth: number = 0,
-    additionalIgnores: string[] = [] // <--- NEW PARAMETER
+    additionalIgnores: string[] = [],
+    isLazyLoadRoot: boolean = false // <--- NEW PARAMETER
 ): Promise<TreeNode[]> {
-    // ADD THIS LOG:
-    logDebug(`Scanning directory: ${currentDir}`);
+    logDebug(`Scanning directory: ${currentDir} (Depth: ${depth})`);
 
     const nodes: TreeNode[] = [];
-
     let entries: import('fs').Dirent[] = [];
     try {
         entries = await fs.readdir(currentDir, { withFileTypes: true });
     } catch (e) {
-        return []; // identifying access errors
+        return [];
     }
 
-    // Merge passed ignores with local .gitignore
-    // We pass additionalIgnores recursively
+    // --- MASSIVE FOLDER CHECK (Optimized) ---
+
+    // If this folder has too many items, we mark it massive and STOP here.
+
+    // EXCEPTION: If this is the specific folder the user requested to expand (isLazyLoadRoot),
+
+    // we MUST process its immediate children, otherwise the UI shows nothing.
+
+    const isTooManyItems = entries.length > MAX_FOLDER_ITEMS;
+
+    const dirName = path.basename(currentDir);
+
+    const isKnownMassive = MASSIVE_FOLDERS.has(dirName);
+
+    // If we are deep in recursion OR (it is massive AND NOT the root of this specific scan request)
+
+    if (depth > 0 && (isKnownMassive || isTooManyItems) && !isLazyLoadRoot) {
+
+        return []; // Returning empty triggers the "Massive" state in the parent node logic
+
+    }
+
+    // -------------------------------------------
+
+    // Merge passed ignores with local .gitignore...
     const activeIgnores = [...additionalIgnores];
     const gitIgnorePath = path.join(currentDir, '.gitignore');
     try {
@@ -74,7 +108,7 @@ export async function scanDirectory(
             const l = line.trim();
             if (l && !l.startsWith('#')) activeIgnores.push(l);
         });
-    } catch (e) { /* No gitignore here */ }
+    } catch (e) { }
 
     // Sort: Folders first, then files
     entries.sort((a, b) => {
@@ -86,79 +120,71 @@ export async function scanDirectory(
     for (const entry of entries) {
         const fullPath = path.join(currentDir, entry.name);
         const relPath = path.relative(rootDir, fullPath);
-
-        // Normalize path to forward slashes for consistent gitignore comparison (Fixes Windows issues)
         const normalizedRelPath = relPath.split(path.sep).join('/');
         const isDirectory = entry.isDirectory();
 
-        // Check simple ignore logic (System files)
+        // Check simple ignore logic (System files)...
         let isIgnored = isSystemIgnored(entry.name);
-
-        // Check against accumulated patterns (Strict Git Logic)
         if (!isIgnored) {
              isIgnored = activeIgnores.some(pattern => {
+                // ... existing regex logic ...
                 let p = pattern.trim();
                 if (!p || p.startsWith('#')) return false;
-
-                // 0. Handle Negation (Safety check: don't let ! patterns trigger ignores)
                 if (p.startsWith('!')) return false;
-
-                // Normalize pattern slashes
                 p = p.replace(/\\/g, '/');
-
-                // Handle directory-specific patterns (ending in /)
                 const isDirPattern = p.endsWith('/');
                 if (isDirPattern) {
                     p = p.slice(0, -1);
-                    if (!isDirectory) return false; // Pattern expects dir, entry is file
+                    if (!isDirectory) return false;
                 }
-
-                // 1. Wildcards (e.g. *.log) - Simple suffix match
-                if (p.startsWith('*')) {
-                    return entry.name.endsWith(p.slice(1));
-                }
-
-                // 2. Rooted Paths (e.g. /node_modules) - Matches from root of scan
+                if (p.startsWith('*')) return entry.name.endsWith(p.slice(1));
                 if (p.startsWith('/')) {
                     const clean = p.slice(1);
                     return normalizedRelPath === clean || normalizedRelPath.startsWith(clean + '/');
                 }
-
-                // 3. Standard Name Match (e.g. "node_modules" or "dist")
-                // Matches if the file/folder name is exactly the pattern
-                if (!p.includes('/')) {
-                    return entry.name === p;
-                }
-
-                // 4. Relative Path Match (e.g. "src/lib")
-                // Matches if the full relative path starts with or equals the pattern
+                if (!p.includes('/')) return entry.name === p;
                 return normalizedRelPath === p || normalizedRelPath.startsWith(p + '/');
              });
         }
 
-        // --- DETECT MEDIA ---
+        // --- MASSIVE & MEDIA CHECKS ---
 
         const ext = path.extname(entry.name).toLowerCase();
-
         const isMedia = !isDirectory && MEDIA_EXTENSIONS.has(ext);
 
-        // --------------------
+        let isMassive = false;
+        let children: TreeNode[] | undefined = undefined;
+        if (isDirectory) {
+            // Check if THIS specific child folder is known massive (e.g. node_modules)
+            // If so, we mark it massive and DO NOT recurse.
+            if (MASSIVE_FOLDERS.has(entry.name)) {
+                isMassive = true;
+                children = []; // Empty children = Massive/Lazy Load
+            } else {
+                // Recurse normally
+                // Pass false for isLazyLoadRoot because children of the lazy load root are not exempt
+                children = await scanDirectory(rootDir, fullPath, depth + 1, activeIgnores, false);
+            }
+        } else {
+            // Check File Size
+            try {
+                const stats = await fs.stat(fullPath);
+                if (stats.size > MAX_FILE_SIZE_MB) isMassive = true;
+            } catch(e) {}
+        }
+
+        // ------------------------------
 
         const node: TreeNode = {
             name: entry.name,
-            path: relPath, // Keep original OS-specific path for file operations
+            path: relPath,
             type: isDirectory ? 'folder' : 'file',
             isIgnored: isIgnored,
-            isMedia: isMedia, // <--- SET PROPERTY
+            isMedia: isMedia,
+            isMassive: isMassive, // <--- NEW
+            children: children,
             depth: depth
         };
-
-        if (isDirectory) {
-            // Recursively scan
-            // Pass the ORIGINAL additionalIgnores down, not the accumulated local ones
-            // (Logic: local .gitignores only apply to that folder and subfolders, but template ignores apply globally)
-            node.children = await scanDirectory(rootDir, fullPath, depth + 1, additionalIgnores);
-        }
 
         nodes.push(node);
     }
