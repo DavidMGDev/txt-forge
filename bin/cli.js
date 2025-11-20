@@ -145,13 +145,13 @@ async function startServer() {
                 if (isDebug) console.error(e);
             } finally {
                 // Cleanup and Exit
-                // FIX: Increased delay to 3000ms (3 seconds).
+                // FIX: Increased delay to 500ms (0.5 seconds).
                 // 500ms is often too fast for Windows to process the 'open' command
                 // before the parent process dies.
                 setTimeout(() => {
                     server.kill();
                     process.exit(0);
-                }, 3000);
+                }, 500);
             }
         } else {
             // --- UI MODE LOGIC ---
