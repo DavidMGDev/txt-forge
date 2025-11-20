@@ -40,10 +40,32 @@ npm install -g txt-forge
 
 ## 🛠️ Usage
 
-1. Open your terminal in the project you want to convert.
-2. Run `txt-forge`.
-3. Select your files in the browser window.
-4. Click Save to Project or Save to Global Vault.
+### Interactive Mode (GUI)
+
+Simply run the command in your project folder to launch the local web interface:
+
+```bash
+txt-forge
+```
+
+### Auto Mode (CLI Only)
+
+Skip the browser and instantly convert your project using auto-detection:
+
+```bash
+# Auto-detect and save to ./TXT-Forge/ folder
+txt-forge --auto
+
+# Save to Global Vault instead (~/.txt-forge-vault)
+txt-forge -a --vault
+
+# Include ignored files (like package-lock.json) in the Source Tree map
+# (Useful for giving AI context on dependencies without including the file content)
+txt-forge -a --ignored
+
+# Combine flags (Auto + Vault + Ignored)
+txt-forge -a -v -i
+```
 
 ## 📄 Output Format
 

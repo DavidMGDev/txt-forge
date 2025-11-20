@@ -14,16 +14,26 @@ const USER_CWD = process.cwd();
 const PORT = 4567;
 const SESSION_ID = randomUUID();
 
-// --- NEW: Check for Debug Flag ---
+// --- Argument Parsing ---
 
 const args = process.argv.slice(2);
 
 const isDebug = args.includes('--debug') || args.includes('-d');
 
+// Auto Mode Flags
+const isAuto = args.includes('--auto') || args.includes('-a');
+const isVault = args.includes('--vault') || args.includes('--global') || args.includes('-v');
+const isIgnored = args.includes('--ignored') || args.includes('-i');
+
 // --------------------------------
 
 // Calm initialization message
-console.log('\x1b[36m%s\x1b[0m', '› Initializing TXT-Forge...');
+if (!isAuto) {
+    console.log('\x1b[36m%s\x1b[0m', '› Initializing TXT-Forge...');
+} else {
+    console.log('\x1b[36m%s\x1b[0m', '› TXT-Forge Auto-Mode Initiated...');
+    console.log('\x1b[90m%s\x1b[0m', `  Options: [Vault: ${isVault}] [Show Ignored: ${isIgnored}]`);
+}
 
 if (isDebug) console.log('\x1b[33m%s\x1b[0m', '› Debug Mode Enabled');
 
@@ -56,7 +66,10 @@ async function killPort(port) {
 
 async function startServer() {
     await killPort(PORT);
-    // Spawn server with stdio: 'inherit' so server logs (like file paths) show up here
+
+    // In auto mode, we pipe stdout to 'ignore' to keep the CLI output clean from server logs
+    // unless we are in debug mode.
+    const stdioConfig = (isAuto && !isDebug) ? ['ignore', 'ignore', 'inherit'] : 'inherit';
     const server = spawn('node', [serverPath], {
         env: {
             ...process.env,
@@ -64,21 +77,54 @@ async function startServer() {
             TXT_FORGE_CWD: USER_CWD,
             ORIGIN: `http://localhost:${PORT}`,
             FORGE_SESSION_ID: SESSION_ID,
-            // Tell SvelteKit adapter-node to be quiet about the listening port
-            // We will handle the "Ready" message ourselves
             node_env: 'production',
-            // --- NEW: Pass Debug Env ---
             TXT_FORGE_DEBUG: isDebug ? 'true' : 'false'
         },
-        stdio: 'inherit'
+        stdio: stdioConfig
     });
-    // Wait slightly to ensure server is up, then open browser
+    const url = `http://localhost:${PORT}`;
+    // Wait for server to start
     setTimeout(async () => {
-        const url = `http://localhost:${PORT}`;
-        console.log('\x1b[32m%s\x1b[0m', `✓ Ready. Opening ${url}`);
-        console.log('\x1b[90m%s\x1b[0m', '  (Press Ctrl+C to exit manually)');
-        await open(url);
-    }, 1000);
+
+        if (isAuto) {
+            // --- AUTO MODE LOGIC ---
+            try {
+                console.log('\x1b[90m%s\x1b[0m', '› Detecting stack and processing files...');
+
+                // 1. Call the CLI-specific API endpoint
+                const response = await fetch(`${url}/api/cli-forge`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        saveToVault: isVault,
+                        includeIgnoredInTree: isIgnored
+                    })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    console.log('\x1b[32m%s\x1b[0m', '✓ Auto-Forge Complete!');
+                    console.log('\x1b[90m%s\x1b[0m', `  Detected: ${result.detectedIds.join(', ') || 'None'}`);
+                    console.log('\x1b[36m%s\x1b[0m', `  Output:   ${result.outputPath}`);
+                    console.log('\x1b[90m%s\x1b[0m', `  Generated ${result.files.length} file(s).`);
+                } else {
+                    console.error('\x1b[31m%s\x1b[0m', '✕ Error:', result.message);
+                    if (result.ids) console.log('  Detected:', result.ids.join(', '));
+                }
+            } catch (e) {
+                console.error('\x1b[31m%s\x1b[0m', '✕ Failed to communicate with internal server.');
+                if (isDebug) console.error(e);
+            } finally {
+                // Cleanup and Exit
+                server.kill();
+                process.exit(0);
+            }
+        } else {
+            // --- UI MODE LOGIC ---
+            console.log('\x1b[32m%s\x1b[0m', `✓ Ready. Opening ${url}`);
+            console.log('\x1b[90m%s\x1b[0m', '  (Press Ctrl+C to exit manually)');
+            await open(url);
+        }
+    }, 1500); // Gave it slightly more time (1.5s) to ensure SvelteKit cold start is ready
 
     process.on('SIGINT', () => {
         server.kill();
