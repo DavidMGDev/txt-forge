@@ -59,12 +59,18 @@ txt-forge --auto
 # Save to Global Vault instead (~/.txt-forge-vault)
 txt-forge -a --vault
 
+# Save to a specific custom path
+txt-forge -a --custom "C:/Users/Dev/Desktop/MyContext"
+
+# or short alias:
+txt-forge -a -c "./my-output"
+
 # Include ignored files (like package-lock.json) in the Source Tree map
 # (Useful for giving AI context on dependencies without including the file content)
 txt-forge -a --ignored
 
-# Combine flags (Auto + Vault + Ignored)
-txt-forge -a -v -i
+# Combine flags (Auto + Custom Path + Ignored)
+txt-forge -a -i -c "./output"
 ```
 
 ## 📄 Output Format

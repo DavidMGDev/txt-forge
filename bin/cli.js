@@ -25,6 +25,17 @@ const isAuto = args.includes('--auto') || args.includes('-a');
 const isVault = args.includes('--vault') || args.includes('--global') || args.includes('-v');
 const isIgnored = args.includes('--ignored') || args.includes('-i');
 
+// Custom Path Parsing (-c "path" or --custom "path")
+let customPath = null;
+const customFlagIndex = args.indexOf('--custom') > -1 ? args.indexOf('--custom') : args.indexOf('-c');
+if (customFlagIndex > -1 && args[customFlagIndex + 1]) {
+    // Grab the next argument as the path
+    customPath = args[customFlagIndex + 1];
+    // Basic cleanup to remove quotes if user added them manually in a weird way,
+    // though shell usually handles this.
+    customPath = customPath.replace(/^"|"$/g, '').replace(/^'|'$/g, '');
+}
+
 // --------------------------------
 
 // Calm initialization message
@@ -97,15 +108,26 @@ async function startServer() {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         saveToVault: isVault,
-                        includeIgnoredInTree: isIgnored
+                        includeIgnoredInTree: isIgnored,
+                        customPath: customPath // Pass the path
                     })
                 });
                 const result = await response.json();
+
                 if (result.success) {
                     console.log('\x1b[32m%s\x1b[0m', '✓ Auto-Forge Complete!');
+
+                    // Gitignore Warning
+                    if (result.gitIgnoreModified) {
+                        console.log('\x1b[33m%s\x1b[0m', '⚠ Note: Added "TXT-Forge/" to your .gitignore file.');
+                    }
+
                     console.log('\x1b[90m%s\x1b[0m', `  Detected: ${result.detectedIds.join(', ') || 'None'}`);
                     console.log('\x1b[36m%s\x1b[0m', `  Output:   ${result.outputPath}`);
                     console.log('\x1b[90m%s\x1b[0m', `  Generated ${result.files.length} file(s).`);
+
+                    // Open the folder automatically
+                    await open(result.outputPath);
                 } else {
                     console.error('\x1b[31m%s\x1b[0m', '✕ Error:', result.message);
                     if (result.ids) console.log('  Detected:', result.ids.join(', '));

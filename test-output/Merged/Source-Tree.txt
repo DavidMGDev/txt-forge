@@ -1,0 +1,25 @@
+repository/
+│   bin\cli.js
+│   postcss.config.js
+│   src\app.css
+│   src\app.d.ts
+│   src\app.html
+│   src\lib\components\FileTreeNode.svelte
+│   src\lib\index.ts
+│   src\lib\processor.ts
+│   src\lib\server\logger.js
+│   src\lib\server\sys-utils.js
+│   src\lib\templates.ts
+│   src\lib\tree.ts
+│   src\routes\+layout.svelte
+│   src\routes\+page.svelte
+│   src\routes\api\cli-forge\+server.ts
+│   src\routes\api\detect\+server.ts
+│   src\routes\api\forge\+server.ts
+│   src\routes\api\open\+server.ts
+│   src\routes\api\select-folder\+server.ts
+│   src\routes\api\shutdown\+server.ts
+│   src\routes\api\tree\+server.ts
+│   svelte.config.js
+│   tailwind.config.js
+│   vite.config.ts

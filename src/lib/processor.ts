@@ -25,6 +25,7 @@ interface ProcessResult {
     message: string;
     outputPath: string;
     files: string[];
+    gitIgnoreModified?: boolean; // <--- NEW FIELD
 }
 
 export interface DetectionResult {
@@ -263,7 +264,13 @@ export async function processFiles(config: ProcessConfig): Promise<ProcessResult
         else if (config.saveMode === 'custom' && config.customPath) outputBaseDir = path.resolve(config.customPath);
         else throw new Error("Invalid save path configuration.");
 
-        if (config.saveMode === 'root') await ensureGitIgnore(sourceRoot);
+        let gitIgnoreModified = false;
+
+        if (config.saveMode === 'root') {
+
+            gitIgnoreModified = await ensureGitIgnore(sourceRoot);
+
+        }
 
         const mergedDir = path.join(outputBaseDir, 'Merged');
         await cleanDirectory(mergedDir);
@@ -303,7 +310,8 @@ export async function processFiles(config: ProcessConfig): Promise<ProcessResult
             success: true,
             message: "Processing Complete",
             outputPath: mergedDir,
-            files: generatedFiles
+            files: generatedFiles,
+            gitIgnoreModified // <--- Pass status
         };
     } catch (error: any) {
         return { success: false, message: error.message || "Unknown Error", outputPath: '', files: [] };
@@ -312,11 +320,11 @@ export async function processFiles(config: ProcessConfig): Promise<ProcessResult
 
 // --- INTERNAL HELPERS ---
 
-async function ensureGitIgnore(rootDir: string) {
+async function ensureGitIgnore(rootDir: string): Promise<boolean> {
     try {
         const gitIgnorePath = path.join(rootDir, '.gitignore');
         let content = "";
-        
+
         try {
             content = await fs.readFile(gitIgnorePath, 'utf-8');
         } catch (e) {
@@ -327,10 +335,13 @@ async function ensureGitIgnore(rootDir: string) {
         if (!content.includes('TXT-Forge')) {
             const append = content.endsWith('\n') || content === "" ? "TXT-Forge/" : "\nTXT-Forge/";
             await fs.appendFile(gitIgnorePath, append, 'utf-8');
+            return true; // <--- Modified
         }
     } catch (e) {
         console.warn("Could not update .gitignore", e);
     }
+
+    return false; // <--- Not Modified
 }
 
 async function cleanDirectory(dir: string) {
