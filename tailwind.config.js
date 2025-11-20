@@ -3,25 +3,35 @@ export default {
   content: ['./src/**/*.{html,js,svelte,ts}'],
   theme: {
     extend: {
-      backgroundSize: {
-        '400%': '400% 400%', // Increased size for more visible movement
-      },
       animation: {
-        // 8s loop is faster and more noticeable than 15s
-        'accretion': 'accretion 8s ease infinite',
+        'text-gradient': 'text-gradient 6s ease infinite',
+        'blob': 'blob 10s infinite',
         'fade-in-up': 'fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards',
-        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
       },
       keyframes: {
-        accretion: {
-          '0%': {
-            'background-position': '0% 50%',
+        'text-gradient': {
+          '0%, 100%': {
+            'background-size': '200% 200%',
+            'background-position': 'left center'
           },
           '50%': {
-            'background-position': '100% 50%',
+            'background-size': '200% 200%',
+            'background-position': 'right center'
+          },
+        },
+        blob: {
+          '0%': {
+            transform: 'translate(0px, 0px) scale(1)',
+          },
+          '33%': {
+            transform: 'translate(30px, -50px) scale(1.1)',
+          },
+          '66%': {
+            transform: 'translate(-20px, 20px) scale(0.9)',
           },
           '100%': {
-            'background-position': '0% 50%',
+            transform: 'translate(0px, 0px) scale(1)',
           },
         },
         fadeInUp: {

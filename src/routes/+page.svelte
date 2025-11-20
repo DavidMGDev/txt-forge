@@ -1,168 +1,281 @@
 <script lang="ts">
+
     import { onMount, onDestroy, tick } from 'svelte';
+
     import { templates } from '$lib/templates';
+
     import FileTreeNode from '$lib/components/FileTreeNode.svelte';
+
     import { fade, slide } from 'svelte/transition';
 
     // --- STATE ---
 
     let isDetecting = $state(true);
+
     let isProcessing = $state(false);
+
     let isAppLoading = $state(true);
-    let isShuttingDown = $state(false); // NEW State for smooth exit
+
+    let isShuttingDown = $state(false);
+
     let settingsOpen = $state(false);
+
     let templatesExpanded = $state(false);
 
     // Data
+
     let detectedIds: string[] = $state([]);
+
     let detectionReasons: Record<string, string[]> = $state({});
+
     let gitStatus: 'none' | 'clean' | 'ignored' = $state('none');
+
     let selectedIds: string[] = $state([]);
+
     let maxChars = $state(75000);
+
     let customPath = $state('');
+
     let cwd = $state('');
+
     let sessionId = $state('');
+
     let savedCustomPath = $state('');
+
     let globalVaultPath = $state('');
 
     // TREE STATE
+
     let treeNodes: any[] = $state([]);
+
     let treeLoading = $state(false);
+
     let treeExpanded = $state(false);
+
     let selectedFilePaths: Set<string> = $state(new Set());
-    let treeCardElement: HTMLElement; // Ref for scrolling
+
+    let treeCardElement: HTMLElement;
 
     let fileTypeMap = new Map<string, 'file' | 'folder'>();
+
     let useTreeMode = $derived(treeExpanded);
 
     // Dialog State
+
     let showSuccessDialog = $state(false);
+
     let showErrorDialog = $state(false);
+
     let dialogTitle = $state('');
+
     let dialogMessage = $state('');
+
     let successOutputPath = $state('');
 
     // --- COMPUTED ---
 
     let selectedTemplateObjects = $derived(templates.filter(t => selectedIds.includes(t.id)));
+
     let unselectedTemplateObjects = $derived(templates.filter(t => !selectedIds.includes(t.id)));
+
+    let selectedFileCount = $derived.by(() => {
+
+        let count = 0;
+
+        for (const path of selectedFilePaths) {
+
+            if (fileTypeMap.get(path) === 'file') {
+
+                count++;
+
+            }
+
+        }
+
+        return count;
+
+    });
 
     // --- LOGIC ---
 
     onMount(async () => {
+
         await detect();
-        await loadFileTree();
+
+        await loadFileTree(); 
+
         setTimeout(() => {
+
             isAppLoading = false;
+
         }, 100);
+
         window.addEventListener('beforeunload', handleUnload);
+
     });
 
     onDestroy(() => {
+
         if (typeof window !== 'undefined') window.removeEventListener('beforeunload', handleUnload);
+
     });
 
     function handleUnload() {
+
         if (!sessionId) return;
+
         fetch('/api/shutdown', {
+
             method: 'POST',
+
             headers: { 'Content-Type': 'application/json' },
+
             body: JSON.stringify({ sessionId }),
+
             keepalive: true
+
         });
+
     }
 
     async function detect() {
+
         try {
+
             const res = await fetch('/api/detect');
+
             const data = await res.json();
+
             detectedIds = data.ids;
+
             detectionReasons = data.reasons || {};
+
             gitStatus = data.gitStatus;
+
             cwd = data.cwd;
+
             sessionId = data.sessionId;
+
             savedCustomPath = data.savedCustomPath;
+
             customPath = data.savedCustomPath;
+
             globalVaultPath = data.globalVaultPath;
+
             selectedIds = [...detectedIds];
+
         } catch (e) {
+
             console.error(e);
+
             dialogTitle = 'Detection Failed';
+
             dialogMessage = 'Could not scan directory. Please ensure the server is running correctly.';
+
             showErrorDialog = true;
+
         } finally {
+
             isDetecting = false;
+
         }
+
     }
 
-    // Helper to compare arrays for the Smart Reload logic
     function areArraysEqual(a: string[], b: string[]) {
+
         if (a.length !== b.length) return false;
+
         const s = new Set(b);
+
         return a.every(x => s.has(x));
+
     }
 
     function toggleTemplate(id: string) {
+
         if (selectedIds.includes(id)) {
+
             selectedIds = selectedIds.filter(i => i !== id);
+
         } else {
+
             selectedIds = [...selectedIds, id];
+
         }
-        // We DO reload here because the user explicitly clicked a template
+
         loadFileTree();
+
     }
 
     function toggleTemplatesSection() {
+
         const wasExpanded = templatesExpanded;
+
         templatesExpanded = !templatesExpanded;
 
+        
+
         if (wasExpanded) {
-            // Closing: Check if we actually need to reset/reload
-            // Logic: If the user messed with manual selection, then closed it,
-            // usually we reset to auto-detected (or keep selection).
-            // The original logic reset to auto-detected.
 
             const targetIds = [...detectedIds];
 
-            // Only reload if the current selection differs from the target
             if (!areArraysEqual(selectedIds, targetIds)) {
+
                 selectedIds = targetIds;
+
                 loadFileTree();
+
             }
+
         }
+
     }
 
     async function scrollToTree() {
+
         treeExpanded = !treeExpanded;
+
         if (treeExpanded && treeCardElement) {
-            await tick(); // Wait for DOM update
+
+            await tick();
+
             treeCardElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
         }
+
     }
 
-    // NEW: Smooth Exit Logic
     async function exitApp() {
-        // 1. Activate Shutdown Loading Screen
-        isShuttingDown = true;
-        showSuccessDialog = false; // Hide the success modal
 
-        // 2. Wait 1.5 seconds for UX smoothness
+        isShuttingDown = true;
+
+        showSuccessDialog = false;
+
+        
+
+        // Wait 1.5s for UX
+
         await new Promise(resolve => setTimeout(resolve, 1500));
 
-        // 3. Send Shutdown Signal
         if (sessionId) {
+
             await fetch('/api/shutdown', {
+
                 method: 'POST',
+
                 headers: { 'Content-Type': 'application/json' },
+
                 body: JSON.stringify({ sessionId }),
+
                 keepalive: true
+
             });
+
         }
 
-        // 4. Close Window
         window.close();
 
-        // 5. Fallback UI
         document.body.innerHTML = `
 
         <div style="height:100vh;display:flex;align-items:center;justify-content:center;background:#020617;color:#94a3b8;font-family:sans-serif;flex-direction:column;gap:1rem;background-image:radial-gradient(circle at 50% 50%, #f9731622 0%, #0000 70%);">
@@ -172,158 +285,262 @@
             <p>You may close this tab.</p>
 
         </div>`;
+
     }
 
     async function loadFileTree() {
+
         treeLoading = true;
+
         try {
+
             const params = new URLSearchParams();
+
             if (selectedIds.length > 0) params.append('templates', selectedIds.join(','));
+
             const res = await fetch(`/api/tree?${params.toString()}`);
+
             const data = await res.json();
+
             treeNodes = data.tree;
 
-
-
             fileTypeMap.clear();
+
             const initialSet = new Set<string>();
+
             const processNode = (nodes: any[]) => {
+
                 for (const node of nodes) {
+
                     fileTypeMap.set(node.path, node.type);
+
                     if (!node.isIgnored) {
+
                         if (node.type === 'folder') {
+
                             initialSet.add(node.path);
+
                             if (node.children) processNode(node.children);
+
                         } else {
+
                             initialSet.add(node.path);
+
                         }
+
                     }
+
                 }
+
             };
+
             processNode(treeNodes);
+
             selectedFilePaths = initialSet;
+
         } catch (e) {
+
             dialogTitle = 'Tree Scan Failed';
+
             dialogMessage = 'Could not load file structure.';
+
             showErrorDialog = true;
+
         } finally {
+
             treeLoading = false;
+
         }
+
     }
 
     function handleTreeToggle(path: string, isFolder: boolean, forcedState?: boolean) {
+
         const newSet = new Set(selectedFilePaths);
+
         const findNode = (nodes: any[]): any => {
+
             for (const node of nodes) {
+
                 if (node.path === path) return node;
+
                 if (node.children) {
+
                     const found = findNode(node.children);
+
                     if (found) return found;
+
                 }
+
             }
+
             return null;
+
         };
+
         const targetNode = findNode(treeNodes);
+
         if (!targetNode) return;
+
         const applyState = (node: any, state: boolean) => {
+
             if (state) newSet.add(node.path);
+
             else newSet.delete(node.path);
 
             if (node.children) {
+
                 node.children.forEach((child: any) => applyState(child, state));
+
             }
+
         };
+
         const nextState = forcedState !== undefined ? forcedState : !newSet.has(path);
+
         applyState(targetNode, nextState);
+
         selectedFilePaths = newSet;
+
     }
 
     async function handleCustomClick(e: MouseEvent) {
+
         if (e.shiftKey && savedCustomPath) {
+
             customPath = savedCustomPath;
+
             runForge('custom');
+
             return;
+
         }
+
         isProcessing = true;
+
         try {
+
             const res = await fetch('/api/select-folder', { method: 'POST' });
+
             const data = await res.json();
+
             if (data.success && data.path) {
+
                 customPath = data.path;
+
                 savedCustomPath = data.path;
+
                 await runForge('custom');
+
             }
+
         } catch (err) {
+
             console.error(err);
+
         } finally {
+
             isProcessing = false;
+
         }
+
     }
 
     async function runForge(mode: 'root' | 'global' | 'custom') {
+
         isProcessing = true;
+
         let payloadFiles: string[] | undefined = undefined;
+
         if (treeExpanded) {
+
             payloadFiles = Array.from(selectedFilePaths).filter(p => true);
+
         }
+
         try {
+
             const res = await fetch('/api/forge', {
+
                 method: 'POST',
+
                 headers: { 'Content-Type': 'application/json' },
+
                 body: JSON.stringify({
+
                     saveMode: mode,
+
                     customPath,
+
                     templateIds: selectedIds,
+
                     maxChars,
+
                     selectedFiles: payloadFiles
+
                 })
+
             });
+
             const result = await res.json();
+
             if (result.success) {
+
                 await fetch('/api/open', {
+
                     method: 'POST',
+
                     body: JSON.stringify({ path: result.outputPath })
+
                 });
+
                 successOutputPath = result.outputPath;
+
                 showSuccessDialog = true;
+
             } else {
+
                 dialogTitle = 'Forging Failed';
+
                 dialogMessage = result.message;
+
                 showErrorDialog = true;
+
             }
+
         } catch (e) {
+
             dialogTitle = 'Connection Error';
+
             dialogMessage = 'Failed to communicate with server.';
+
             showErrorDialog = true;
+
         } finally {
+
             isProcessing = false;
+
         }
+
     }
 
-
-
-    let selectedFileCount = $derived.by(() => {
-        let count = 0;
-        for (const path of selectedFilePaths) {
-            if (fileTypeMap.get(path) === 'file') {
-                count++;
-            }
-        }
-        return count;
-    });
 </script>
 
 <div class="min-h-screen flex flex-col items-center p-8 relative overflow-hidden font-sans">
 
+    <!-- BACKGROUND BLOBS -->
 
+    <div class="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0">
 
-    <!--
+        <div class="absolute top-[-20%] left-1/2 -translate-x-1/2 w-[800px] h-[600px] bg-orange-600/10 rounded-full blur-[120px] animate-blob mix-blend-screen"></div>
 
-        1. INITIAL & SHUTDOWN LOADER
+        <div class="absolute top-[20%] left-[10%] w-[500px] h-[500px] bg-rose-700/10 rounded-full blur-[100px] animate-blob animation-delay-2000 mix-blend-screen"></div>
 
-        Handles Startup, Detection, and Shutdown states.
+        <div class="absolute bottom-[10%] right-[10%] w-[600px] h-[600px] bg-violet-900/20 rounded-full blur-[100px] animate-blob animation-delay-4000 mix-blend-screen"></div>
 
-    -->
+    </div>
+
+    <!-- LOADER -->
 
     {#if isAppLoading || isDetecting || isShuttingDown}
 
@@ -334,8 +551,6 @@
                 <div class="w-32 h-32 bg-orange-500/10 rounded-full animate-ping absolute top-0 left-0"></div>
 
                 <div class="w-32 h-32 bg-orange-600/20 rounded-full relative flex items-center justify-center border border-orange-500/30 shadow-[0_0_80px_rgba(249,115,22,0.4)]">
-
-                    <!-- Inverse spin for shutdown -->
 
                     <svg class="w-12 h-12 text-orange-500 animate-spin duration-[3s] {isShuttingDown ? 'direction-reverse' : ''}" fill="none" viewBox="0 0 24 24">
 
@@ -367,23 +582,11 @@
 
     {/if}
 
+    <!-- OPERATION LOADER -->
 
-
-    <!-- 
-
-        2. OPERATION LOADER (Semi-Transparent, No Dizzy Motion) 
-
-        Used during Tree Load or Processing. 
-
-        Fixes "Source Tree Loading" screen request.
-
-    -->
-
-    {#if (treeLoading || isProcessing) && !isAppLoading && !isDetecting}
+    {#if (treeLoading || isProcessing) && !isAppLoading && !isDetecting && !isShuttingDown}
 
         <div class="fixed inset-0 z-[150] bg-[#020617]/80 backdrop-blur-sm flex flex-col items-center justify-center transition-all duration-500">
-
-            <!-- Static central element, no blobs flying around -->
 
             <div class="w-24 h-24 bg-black/50 rounded-full relative flex items-center justify-center border border-white/10 shadow-2xl">
 
@@ -406,8 +609,6 @@
         </div>
 
     {/if}
-
-
 
     <!-- SUCCESS DIALOG -->
 
@@ -457,8 +658,6 @@
 
     {/if}
 
-
-
     <!-- ERROR DIALOG -->
 
     {#if showErrorDialog && !isShuttingDown}
@@ -489,27 +688,19 @@
 
     {/if}
 
-
-
     <!-- Header -->
 
     <div class="text-center mb-12 mt-8 animate-fade-in-up relative z-10">
 
         <h1 class="text-8xl font-black tracking-tighter mb-6 drop-shadow-[0_0_40px_rgba(249,115,22,0.3)]">
 
-            <!-- MAGMA GRADIENT TEXT -->
-
-            <span class="bg-accretion bg-clip-text text-transparent">
+            <span class="bg-gradient-to-r from-orange-400 via-rose-500 to-violet-500 bg-clip-text text-transparent animate-text-gradient bg-[length:200%_auto]">
 
                 TXT-FORGE
 
             </span>
 
         </h1>
-
-
-
-        <!-- Glass Pill Badge -->
 
         <div class="inline-flex items-center gap-2 bg-black/40 backdrop-blur-md px-5 py-2.5 rounded-full border border-white/5 shadow-lg">
 
@@ -525,399 +716,309 @@
 
     </div>
 
-
+    <!-- Main Grid -->
 
     <div class="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-3 gap-8">
-
-
 
         <!-- LEFT COLUMN: Configuration -->
 
         <div class="lg:col-span-2 flex flex-col gap-6 animate-fade-in-up" style="animation-delay: 0.1s;">
 
+            <!-- TEMPLATES CARD -->
 
+            <div class="bg-slate-900/40 backdrop-blur-xl border border-white/10 rounded-3xl p-8 shadow-2xl relative overflow-hidden">
 
-            <!-- 
+                <div class="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-orange-500/20 to-transparent"></div>
 
-                 1. TEMPLATES CARD 
+                
 
-                 WRAPPER: p-[1px] rounded-3xl bg-accretion (Animated Border)
+                <div class="flex justify-between items-center mb-6">
 
-            -->
+                    <div class="flex items-center gap-3">
 
-            <div class="p-[1px] rounded-3xl bg-accretion shadow-2xl">
+                        <h2 class="text-xs font-bold text-slate-300 uppercase tracking-[0.2em] flex items-center gap-2">
 
-                <div class="bg-slate-950/90 backdrop-blur-xl rounded-3xl p-8 h-full relative overflow-hidden">
+                            {#if isDetecting}
 
-                    
+                                <span class="w-2 h-2 bg-orange-500 rounded-full animate-ping"></span> Detecting...
 
-                    <div class="flex justify-between items-center mb-6">
+                            {:else if templatesExpanded}
 
-                        <div class="flex items-center gap-3">
+                                <span class="w-2 h-2 bg-amber-500 rounded-full shadow-[0_0_10px_#f59e0b]"></span>
 
-                            <h2 class="text-xs font-bold text-slate-300 uppercase tracking-[0.2em] flex items-center gap-2">
+                                Manual Selection
 
-                                {#if isDetecting}
+                            {:else}
 
-                                    <span class="w-2 h-2 bg-orange-500 rounded-full animate-ping"></span> Detecting...
+                                <span class="w-2 h-2 bg-emerald-500 rounded-full shadow-[0_0_10px_#10b981]"></span>
 
-                                {:else if templatesExpanded}
+                                Auto-Detected Stack
 
-                                    <span class="w-2 h-2 bg-amber-500 rounded-full shadow-[0_0_10px_#f59e0b]"></span>
+                            {/if}
 
-                                    Manual Selection
-
-                                {:else}
-
-                                    <span class="w-2 h-2 bg-emerald-500 rounded-full shadow-[0_0_10px_#10b981]"></span>
-
-                                    Auto-Detected Stack
-
-                                {/if}
-
-                            </h2>
-
-                        </div>
-
-                        <!-- THIN BUTTON CHANGE -->
-
-                        <button on:click={toggleTemplatesSection} class="px-3 py-1 rounded-full border border-white/10 bg-white/5 hover:bg-white/10 text-[10px] uppercase font-bold tracking-wider text-orange-400/80 hover:text-orange-300 transition-all hover:shadow-[0_0_10px_rgba(251,146,60,0.2)] hover:border-orange-500/30">
-
-                            {templatesExpanded ? 'Reset to Auto' : 'Edit Templates'}
-
-                        </button>
+                        </h2>
 
                     </div>
 
+                    <button on:click={toggleTemplatesSection} class="px-3 py-1 rounded-full border border-white/10 bg-white/5 hover:bg-white/10 text-[10px] uppercase font-bold tracking-wider text-orange-400/80 hover:text-orange-300 transition-all hover:shadow-[0_0_10px_rgba(251,146,60,0.2)] hover:border-orange-500/30">
 
+                        {templatesExpanded ? 'Reset to Auto' : 'Edit Templates'}
 
-                    <!-- Selected/Detected View -->
+                    </button>
 
-                    {#if selectedIds.length > 0}
+                </div>
 
-                        <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+                {#if selectedIds.length > 0}
 
-                            {#each selectedTemplateObjects as tmpl}
+                    <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
 
-                                <div class="group relative">
+                        {#each selectedTemplateObjects as tmpl}
 
-                                    <button
+                            <div class="group relative">
 
-                                        on:click={() => toggleTemplate(tmpl.id)}
+                                <button
 
-                                        class="w-full relative flex items-center gap-4 bg-white/5 hover:bg-orange-500/10 border border-white/5 hover:border-orange-500/30 text-slate-200 px-5 py-4 rounded-2xl transition-all duration-300 hover:shadow-[0_0_20px_rgba(249,115,22,0.1)] hover:-translate-y-0.5"
+                                    on:click={() => toggleTemplate(tmpl.id)}
 
-                                    >
+                                    class="w-full relative flex items-center gap-4 bg-white/5 hover:bg-orange-500/10 border border-white/5 hover:border-orange-500/30 text-slate-200 px-5 py-4 rounded-2xl transition-all duration-300 hover:shadow-[0_0_20px_rgba(249,115,22,0.1)] hover:-translate-y-0.5"
 
-                                        <img src={tmpl.iconUrl} alt={tmpl.name} class="w-6 h-6 brightness-0 invert opacity-60 group-hover:opacity-100 transition-all" />
+                                >
 
-                                        <span class="font-bold text-sm tracking-wide group-hover:text-orange-100">{tmpl.name}</span>
+                                    <img src={tmpl.iconUrl} alt={tmpl.name} class="w-6 h-6 brightness-0 invert opacity-60 group-hover:opacity-100 transition-all" />
 
-                                        <!-- Active Dot -->
+                                    <span class="font-bold text-sm tracking-wide group-hover:text-orange-100">{tmpl.name}</span>
 
-                                        <span class="absolute top-3 right-3 w-1.5 h-1.5 bg-orange-500 rounded-full shadow-[0_0_8px_#f97316]"></span>
+                                    <span class="absolute top-3 right-3 w-1.5 h-1.5 bg-orange-500 rounded-full shadow-[0_0_8px_#f97316]"></span>
 
-                                    </button>
+                                </button>
 
+                            </div>
 
+                        {/each}
 
-                                    <!-- Tooltip -->
+                    </div>
 
-                                    {#if detectionReasons[tmpl.id] && detectionReasons[tmpl.id].length > 0}
+                {:else}
 
-                                        <div class="absolute opacity-0 group-hover:opacity-100 transition-opacity duration-200 bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 z-20 pointer-events-none">
+                     <div class="text-center py-12 text-slate-600 border border-dashed border-slate-800 rounded-2xl mb-6 bg-black/30">
 
-                                            <div class="bg-black border border-orange-500/20 rounded-lg p-2 text-[10px] text-slate-300 shadow-xl backdrop-blur-md">
+                        <div class="text-3xl mb-2 opacity-50">🔍</div>
 
-                                                <div class="font-bold text-orange-400 mb-1 border-b border-orange-500/10 pb-1">Detected via:</div>
+                        <p class="text-xs uppercase tracking-widest">No templates detected.</p>
 
-                                                <ul class="list-disc pl-3 space-y-0.5 text-slate-400">
+                        <button on:click={toggleTemplatesSection} class="text-orange-400 text-xs mt-3 hover:text-orange-300 font-bold">Select manually</button>
 
-                                                    {#each detectionReasons[tmpl.id] as reason}
+                     </div>
 
-                                                        <li>{reason}</li>
+                {/if}
 
-                                                    {/each}
+                {#if templatesExpanded}
 
-                                                </ul>
+                    <div transition:slide class="border-t border-white/5 pt-6 mt-2">
 
-                                            </div>
+                        <h3 class="text-[10px] uppercase font-bold text-slate-500 mb-4 px-1 tracking-widest">Add More Templates</h3>
 
-                                        </div>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
 
-                                    {/if}
+                            {#each unselectedTemplateObjects as tmpl}
 
-                                </div>
+                                <button
+
+                                    on:click={() => toggleTemplate(tmpl.id)}
+
+                                    class="flex items-center gap-3 px-3 py-3 rounded-lg text-xs text-left transition-all bg-slate-900/40 text-slate-400 border border-transparent hover:bg-slate-800 hover:text-orange-200 hover:border-orange-500/20 group"
+
+                                >
+
+                                    <img src={tmpl.iconUrl} alt="" class="w-4 h-4 opacity-30 group-hover:opacity-100 brightness-0 invert transition-all" />
+
+                                    {tmpl.name}
+
+                                </button>
 
                             {/each}
 
                         </div>
 
-                    {:else}
+                    </div>
 
-                         <div class="text-center py-12 text-slate-600 border border-dashed border-slate-800 rounded-2xl mb-6 bg-black/30">
+                {/if}
 
-                            <div class="text-3xl mb-2 opacity-50">🔍</div>
+            </div>
 
-                            <p class="text-xs uppercase tracking-widest">No templates detected.</p>
+            <!-- FILE TREE CARD -->
 
-                            <button on:click={toggleTemplatesSection} class="text-orange-400 text-xs mt-3 hover:text-orange-300 font-bold">Select manually</button>
+            <div class="bg-slate-900/40 backdrop-blur-xl border border-white/10 rounded-3xl p-8 shadow-2xl flex flex-col gap-4 animate-fade-in-up relative overflow-hidden z-10" style="animation-delay: 0.15s;" bind:this={treeCardElement}>
 
-                         </div>
+                <div class="flex justify-between items-center relative z-10">
 
-                    {/if}
+                    <div class="flex items-center gap-3">
 
+                        <div class="w-10 h-10 rounded-xl bg-orange-500/10 flex items-center justify-center border border-orange-500/20 text-orange-400 shadow-[0_0_15px_rgba(249,115,22,0.1)]">
 
+                            🌳
 
-                    <!-- Expander -->
+                        </div>
 
-                    {#if templatesExpanded}
+                        <div>
 
-                        <div transition:slide class="border-t border-white/5 pt-6 mt-2">
+                            <h2 class="text-xs font-bold text-slate-200 uppercase tracking-[0.2em]">Source Tree</h2>
 
-                            <h3 class="text-[10px] uppercase font-bold text-slate-500 mb-4 px-1 tracking-widest">Add More Templates</h3>
+                            <div class="text-[10px] text-slate-500 font-mono">
 
-                            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                                {treeExpanded ? `${selectedFileCount} files selected` : 'Standard Filter Mode'}
 
-                                {#each unselectedTemplateObjects as tmpl}
+                            </div>
 
-                                    <button
+                        </div>
 
-                                        on:click={() => toggleTemplate(tmpl.id)}
+                    </div>
 
-                                        class="flex items-center gap-3 px-3 py-3 rounded-lg text-xs text-left transition-all bg-slate-900/40 text-slate-400 border border-transparent hover:bg-slate-800 hover:text-orange-200 hover:border-orange-500/20 group"
+                    <button
 
-                                    >
+                        on:click={scrollToTree}
 
-                                        <img src={tmpl.iconUrl} alt="" class="w-4 h-4 opacity-30 group-hover:opacity-100 brightness-0 invert transition-all" />
+                        class="px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all border duration-300
 
-                                        {tmpl.name}
+                        {treeExpanded
 
-                                    </button>
+                            ? 'bg-orange-900/20 text-orange-200 border-orange-500/30 shadow-[0_0_15px_rgba(249,115,22,0.2)]'
+
+                            : 'bg-slate-900 text-slate-500 border-slate-800 hover:bg-slate-800 hover:text-white'}"
+
+                    >
+
+                        {treeExpanded ? 'Close Tree' : 'Open Tree Browser'}
+
+                    </button>
+
+                </div>
+
+                {#if treeNodes.length > 0 || treeLoading}
+
+                    <div class="grid transition-[grid-template-rows] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] {treeExpanded ? 'grid-rows-[1fr] border-t border-white/5 mt-2 pt-2' : 'grid-rows-[0fr] mt-0 pt-0'}">
+
+                        <div class="overflow-hidden">
+
+                            <div class="bg-black/40 rounded-xl border border-white/5 p-4 max-h-[500px] overflow-y-auto custom-scrollbar font-mono text-sm relative z-10 mt-2">
+
+                                {#each treeNodes as node (node.path)}
+
+                                    <FileTreeNode
+
+                                        {node}
+
+                                        selectedPaths={selectedFilePaths}
+
+                                        onToggle={handleTreeToggle}
+
+                                    />
 
                                 {/each}
 
                             </div>
 
-                        </div>
+                            <div class="mt-3 flex items-center gap-2 text-[10px] text-orange-200/60 bg-orange-900/10 p-3 rounded-lg border border-orange-500/10 relative z-10">
 
-                    {/if}
+                                <span class="text-orange-400 text-lg">ℹ</span>
 
-                </div>
+                                <p>
 
-            </div>
+                                    Items checked here will be <strong>merged exactly</strong> as seen. 
 
+                                    Generates <code class="bg-black/50 px-1 rounded text-orange-300">Source-Tree.txt</code>.
 
-
-            <!-- 
-
-                2. FILE TREE CARD 
-
-                WRAPPER: p-[1px] rounded-3xl bg-accretion
-
-            -->
-
-            <div class="p-[1px] rounded-3xl bg-accretion shadow-2xl" bind:this={treeCardElement}>
-
-                <div class="bg-slate-950/90 backdrop-blur-xl rounded-3xl p-8 h-full flex flex-col gap-4 relative overflow-hidden">
-
-                    <div class="flex justify-between items-center relative z-10">
-
-                        <div class="flex items-center gap-3">
-
-                            <div class="w-10 h-10 rounded-xl bg-orange-500/10 flex items-center justify-center border border-orange-500/20 text-orange-400 shadow-[0_0_15px_rgba(249,115,22,0.1)]">
-
-                                🌳
-
-                            </div>
-
-                            <div>
-
-                                <h2 class="text-xs font-bold text-slate-200 uppercase tracking-[0.2em]">Source Tree</h2>
-
-                                <div class="text-[10px] text-slate-500 font-mono">
-
-                                    {treeExpanded ? `${selectedFileCount} files selected` : 'Standard Filter Mode'}
-
-                                </div>
+                                </p>
 
                             </div>
 
                         </div>
-
-
-
-                        <button
-
-                            on:click={scrollToTree}
-
-                            class="px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all border duration-300
-
-                            {treeExpanded
-
-                                ? 'bg-orange-900/20 text-orange-200 border-orange-500/30 shadow-[0_0_15px_rgba(249,115,22,0.2)]'
-
-                                : 'bg-slate-900 text-slate-500 border-slate-800 hover:bg-slate-800 hover:text-white'}"
-
-                        >
-
-                            {treeExpanded ? 'Close Tree' : 'Open Tree Browser'}
-
-                        </button>
 
                     </div>
 
-
-
-                    {#if treeNodes.length > 0 || treeLoading}
-
-                        <div class="grid transition-[grid-template-rows] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] {treeExpanded ? 'grid-rows-[1fr] border-t border-white/5 mt-2 pt-2' : 'grid-rows-[0fr] mt-0 pt-0'}">
-
-                            <div class="overflow-hidden">
-
-                                <div class="bg-black/40 rounded-xl border border-white/5 p-4 max-h-[500px] overflow-y-auto custom-scrollbar font-mono text-sm relative z-10 mt-2">
-
-                                    {#each treeNodes as node (node.path)}
-
-                                        <FileTreeNode
-
-                                            {node}
-
-                                            selectedPaths={selectedFilePaths}
-
-                                            onToggle={handleTreeToggle}
-
-                                        />
-
-                                    {/each}
-
-                                </div>
-
-                                <div class="mt-3 flex items-center gap-2 text-[10px] text-orange-200/60 bg-orange-900/10 p-3 rounded-lg border border-orange-500/10 relative z-10">
-
-                                    <span class="text-orange-400 text-lg">ℹ</span>
-
-                                    <p>
-
-                                        Items checked here will be <strong>merged exactly</strong> as seen. 
-
-                                        Generates <code class="bg-black/50 px-1 rounded text-orange-300">Source-Tree.txt</code>.
-
-                                    </p>
-
-                                </div>
-
-                            </div>
-
-                        </div>
-
-                    {/if}
-
-                </div>
+                {/if}
 
             </div>
 
-
-
         </div>
-
-
 
         <!-- RIGHT COLUMN: Actions -->
 
         <div class="flex flex-col gap-6 animate-fade-in-up" style="animation-delay: 0.2s;">
 
+            <!-- SETTINGS CARD -->
 
+            <div class="bg-slate-900/40 backdrop-blur-xl border border-white/10 rounded-3xl p-6 shadow-2xl relative overflow-hidden">
 
-            <!-- 
+                <div class="flex justify-between items-center z-20 relative">
 
-                SETTINGS CARD 
+                    <div class="flex items-center gap-2 text-slate-300 text-xs font-bold tracking-[0.2em] uppercase">
 
-                WRAPPER: p-[1px] rounded-3xl bg-accretion
+                        <span>Split Strategy</span>
 
-            -->
+                    </div>
 
-            <div class="p-[1px] rounded-3xl bg-accretion shadow-2xl">
+                    <button on:click={() => settingsOpen = !settingsOpen} class="w-8 h-8 flex items-center justify-center rounded-full bg-white/5 hover:bg-orange-500 text-slate-400 hover:text-white transition-all">
 
-                <div class="bg-slate-950/90 backdrop-blur-xl rounded-3xl p-6 h-full relative overflow-hidden">
+                        ⚙
 
-                    <div class="flex justify-between items-center z-20 relative">
+                    </button>
 
-                        <div class="flex items-center gap-2 text-slate-300 text-xs font-bold tracking-[0.2em] uppercase">
+                </div>
 
-                            <span>Split Strategy</span>
+                <div class="grid grid-cols-1 grid-rows-1 mt-4 min-h-[40px]">
+
+                    {#if settingsOpen}
+
+                        <div class="col-start-1 row-start-1 pt-1" transition:fade={{ duration: 200 }}>
+
+                            <label class="text-[10px] text-orange-400 uppercase font-bold mb-2 block">Max Characters per File</label>
+
+                            <div class="flex gap-4 items-center">
+
+                                <input
+
+                                    type="range" min="10000" max="200000" step="5000"
+
+                                    bind:value={maxChars}
+
+                                    class="flex-1 accent-orange-500 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer"
+
+                                />
+
+                                <span class="font-mono text-white text-xs bg-orange-600 px-2 py-1 rounded shadow-lg">
+
+                                    {(maxChars / 1000).toFixed(0)}k
+
+                                </span>
+
+                            </div>
 
                         </div>
 
-                        <button on:click={() => settingsOpen = !settingsOpen} class="w-8 h-8 flex items-center justify-center rounded-full bg-white/5 hover:bg-orange-500 text-slate-400 hover:text-white transition-all">
+                    {:else}
 
-                            ⚙
+                         <div class="col-start-1 row-start-1" transition:fade={{ duration: 200 }}>
 
-                        </button>
+                            <div class="text-[11px] text-slate-500 font-medium leading-relaxed">
 
-                    </div>
+                                Files larger than <span class="text-orange-400">{(maxChars/1000).toFixed(0)}k</span> chars will be smartly split at function boundaries.
 
+                             </div>
 
+                        </div>
 
-                    <div class="grid grid-cols-1 grid-rows-1 mt-4 min-h-[40px]">
-
-                        {#if settingsOpen}
-
-                            <div class="col-start-1 row-start-1 pt-1" transition:fade={{ duration: 200 }}>
-
-                                <label class="text-[10px] text-orange-400 uppercase font-bold mb-2 block">Max Characters per File</label>
-
-                                <div class="flex gap-4 items-center">
-
-                                    <input
-
-                                        type="range" min="10000" max="200000" step="5000"
-
-                                        bind:value={maxChars}
-
-                                        class="flex-1 accent-orange-500 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer"
-
-                                    />
-
-                                    <span class="font-mono text-white text-xs bg-orange-600 px-2 py-1 rounded shadow-lg">
-
-                                        {(maxChars / 1000).toFixed(0)}k
-
-                                    </span>
-
-                                </div>
-
-                            </div>
-
-                        {:else}
-
-                             <div class="col-start-1 row-start-1" transition:fade={{ duration: 200 }}>
-
-                                <div class="text-[11px] text-slate-500 font-medium leading-relaxed">
-
-                                    Files larger than <span class="text-orange-400">{(maxChars/1000).toFixed(0)}k</span> chars will be smartly split at function boundaries.
-
-                                 </div>
-
-                            </div>
-
-                        {/if}
-
-                    </div>
+                    {/if}
 
                 </div>
 
             </div>
 
-
-
             <!-- ACTIONS -->
 
             <div class="grid gap-4">
 
-
-
-                <!-- 1. SAVE TO PROJECT (MAGMA THEME) -->
+                <!-- SAVE TO PROJECT -->
 
                 <button on:click={() => runForge('root')} disabled={isProcessing || selectedIds.length === 0}
 
@@ -925,21 +1026,13 @@
 
                     
 
-                    <!-- Magma Gradient Background (Hidden usually, revealed on hover opacity) -->
-
                     <div class="absolute inset-0 bg-gradient-to-br from-orange-900/20 to-red-900/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-
-
-
-                    <!-- Icon -->
 
                     <svg class="absolute -right-5 -bottom-5 w-40 h-40 text-orange-500/5 group-hover:text-orange-500/20 transition-colors -rotate-12 pointer-events-none" fill="currentColor" viewBox="0 0 24 24">
 
                         <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
 
                     </svg>
-
-
 
                     <div class="relative z-10">
 
@@ -963,15 +1056,11 @@
 
                         </div>
 
-
-
                         <div class="font-black text-lg text-white group-hover:text-orange-100 transition-colors tracking-tight">
 
                             Save to Project
 
                         </div>
-
-
 
                         <div class="text-[10px] text-slate-500 font-mono mt-1 break-all pr-8 uppercase tracking-wider">
 
@@ -995,27 +1084,19 @@
 
                 </button>
 
-
-
-                <!-- 2. SAVE TO GLOBAL VAULT (VIOLET/VOID THEME) -->
+                <!-- SAVE TO GLOBAL VAULT -->
 
                 <button on:click={() => runForge('global')} disabled={isProcessing || selectedIds.length === 0}
 
                     class="group relative overflow-hidden min-h-[8rem] rounded-3xl bg-black/50 border border-white/5 hover:border-violet-500/50 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed shadow-xl hover:shadow-[0_0_30px_rgba(139,92,246,0.2)] hover:-translate-y-1 flex flex-col justify-center px-8 py-6">
 
-
-
                     <div class="absolute inset-0 bg-gradient-to-br from-violet-900/20 to-fuchsia-900/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-
-
 
                     <svg class="absolute -right-8 -bottom-8 w-48 h-48 text-violet-500/5 group-hover:text-violet-500/15 transition-colors rotate-6 pointer-events-none" fill="currentColor" viewBox="0 0 24 24">
 
                          <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/>
 
                     </svg>
-
-
 
                     <div class="relative z-10">
 
@@ -1041,9 +1122,7 @@
 
                 </button>
 
-
-
-                <!-- 3. SAVE TO CUSTOM (AMBER/GOLD THEME) -->
+                <!-- SAVE TO CUSTOM -->
 
                 <button
 
@@ -1057,15 +1136,11 @@
 
                     <div class="absolute inset-0 bg-gradient-to-br from-amber-900/20 to-yellow-900/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
 
-
-
                     <svg class="absolute -right-8 -bottom-8 w-44 h-44 text-amber-500/5 group-hover:text-amber-500/15 transition-colors rotate-6 pointer-events-none" fill="currentColor" viewBox="0 0 24 24">
 
                         <path d="M12 2c5.514 0 10 4.486 10 10s-4.486 10-10 10-10-4.486-10-10 4.486-10 10-10zm0-2c-6.627 0-12 5.373-12 12s5.373 12 12 12 12-5.373 12-12-5.373-12-12-12zm-1 6h2v8h-2v-8zm1 12.25c-.69 0-1.25-.56-1.25-1.25s.56-1.25 1.25-1.25 1.25.56 1.25 1.25-.56 1.25-1.25 1.25z"/>
 
                     </svg>
-
-
 
                     <div class="relative z-10">
 
@@ -1089,11 +1164,7 @@
 
                         </div>
 
-
-
                         <div class="font-black text-lg text-white group-hover:text-amber-100 transition-colors tracking-tight">Save to Custom Location</div>
-
-
 
                         <div class="text-[10px] text-slate-500 font-mono mt-1 break-all pr-6 relative uppercase tracking-wider" title={savedCustomPath}>
 
@@ -1111,8 +1182,6 @@
 
     </div>
 
-
-
     <!-- FOOTER -->
 
     <div class="mt-auto pt-16 pb-8 text-center">
@@ -1124,23 +1193,43 @@
 </div>
 
 <style>
+
     .custom-scrollbar {
+
         scrollbar-width: thin;
+
         scrollbar-color: rgba(249, 115, 22, 0.2) rgba(255,255,255,0.02);
+
     }
+
     .custom-scrollbar::-webkit-scrollbar {
+
         width: 8px;
+
     }
+
     .custom-scrollbar::-webkit-scrollbar-track {
+
         background: rgba(0,0,0,0.2);
+
         border-radius: 4px;
+
     }
+
     .custom-scrollbar::-webkit-scrollbar-thumb {
+
         background: rgba(249, 115, 22, 0.15);
+
         border-radius: 4px;
+
         border: 1px solid rgba(249, 115, 22, 0.05);
+
     }
+
     .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+
         background: rgba(249, 115, 22, 0.3);
+
     }
+
 </style>
