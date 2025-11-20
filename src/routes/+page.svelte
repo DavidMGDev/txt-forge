@@ -11,7 +11,6 @@
     let isProcessing = $state(false);
     let settingsOpen = $state(false);
     let templatesExpanded = $state(false);
-    let customPathOpen = $state(false);
 
     // Data
     let detectedIds: string[] = $state([]);
@@ -27,6 +26,10 @@
 
     // NEW: Session ID for safe shutdown
     let sessionId = $state('');
+
+    // UPDATE: Add these new state variables
+    let savedCustomPath = $state('');
+    let globalVaultPath = $state('');
 
     // TREE STATE
     let treeNodes: any[] = $state([]);
@@ -131,6 +134,11 @@
             // See Step 4.1 below
             sessionId = data.sessionId;
 
+            // NEW: Load paths from backend
+            savedCustomPath = data.savedCustomPath;
+            customPath = data.savedCustomPath; // Pre-fill current logic
+            globalVaultPath = data.globalVaultPath;
+
             selectedIds = [...detectedIds];
         } catch (e) {
             console.error(e);
@@ -139,6 +147,38 @@
             showErrorDialog = true;
         } finally {
             isDetecting = false;
+        }
+    }
+
+    // NEW: Handler for Custom Path Button
+    async function handleCustomClick(e: MouseEvent) {
+        // 1. Check for Shift + Click shortcut
+        if (e.shiftKey && savedCustomPath) {
+            customPath = savedCustomPath;
+            runForge('custom');
+            return;
+        }
+
+        // 2. Normal Click: Open Native OS Dialog via API
+        isProcessing = true;
+        try {
+            const res = await fetch('/api/select-folder', { method: 'POST' });
+            const data = await res.json();
+
+            if (data.success && data.path) {
+                customPath = data.path;
+                savedCustomPath = data.path; // Update local state immediately
+
+                // Auto-run forge after selection?
+                // Let's just select the path, then user clicks again or we run it.
+                // Requirement implies selecting folder then running.
+                // Let's run immediately to be smooth:
+                await runForge('custom');
+            }
+        } catch (err) {
+            console.error(err);
+        } finally {
+            isProcessing = false;
         }
     }
 
@@ -248,10 +288,8 @@
     }
 
     async function runForge(mode: 'root' | 'global' | 'custom') {
-        if (mode === 'custom' && !customPath) {
-            customPathOpen = true;
-            return;
-        }
+        // UPDATE: Remove the old modal check
+        // if (mode === 'custom' && !customPath) { ... } -> REMOVED
         isProcessing = true;
 
         // PREPARE PAYLOAD
@@ -592,49 +630,100 @@
             <!-- ACTIONS -->
             <div class="grid gap-4">
 
-                <!-- Root Button with SMART GIT Logic -->
+                <!-- 1. ROOT SAVE BUTTON -->
                 <button on:click={() => runForge('root')} disabled={isProcessing || selectedIds.length === 0}
-                    class="group relative overflow-hidden p-6 rounded-3xl bg-slate-900 border border-slate-700 hover:border-indigo-500 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed shadow-xl hover:shadow-indigo-500/20 hover:-translate-y-1">
-                    <div class="absolute inset-0 bg-gradient-to-r from-indigo-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    class="group relative overflow-hidden h-32 rounded-3xl bg-slate-900 border border-slate-700 hover:border-indigo-500 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed shadow-xl hover:shadow-indigo-500/20 hover:-translate-y-1 flex flex-col justify-center px-8">
+
+                    <!-- Background Icon (Masked/Watermark) -->
+                    <svg class="absolute -right-6 -bottom-8 w-40 h-40 text-indigo-500/10 group-hover:text-indigo-500/20 transition-colors rotate-12 pointer-events-none" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M20 7.917v12.083h-20v-18h6.917l2 2h11.083v3.917h-2v-1.917h-16v14h16v-10h2zM12 11v-2h-2v2h-2v2h2v2h2v-2h2v-2z"/>
+                    </svg>
+
                     <div class="relative z-10">
-                        <div class="text-xl mb-2 flex items-center justify-between">
-                            <span>📁</span>
-                            {#if gitStatus !== 'none'}
-                                <span class="text-[10px] font-bold uppercase bg-slate-800 text-indigo-400 px-2 py-1 rounded">Git Detected</span>
-                            {/if}
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="flex items-center gap-2">
+                                <div class="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center text-indigo-400 group-hover:scale-110 transition-transform">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z"></path></svg>
+                                </div>
+                                {#if gitStatus !== 'none'}
+                                    <span class="text-[10px] font-bold uppercase bg-slate-800 border border-slate-600 text-indigo-300 px-2 py-0.5 rounded-full">Git Detected</span>
+                                {/if}
+                            </div>
                         </div>
-                        <div class="font-bold text-lg text-white">
-                            {gitStatus !== 'none' ? "Save to Project Folder" : "Save to Current Folder"}
+
+                        <div class="font-bold text-lg text-white group-hover:text-indigo-200 transition-colors">
+                            {gitStatus !== 'none' ? "Save to Project" : "Save to Current Folder"}
                         </div>
-                        <div class="text-xs text-slate-500 font-mono mt-1">
+
+                        <div class="text-xs text-slate-500 font-mono mt-1 truncate pr-12">
                             {#if gitStatus === 'ignored'}
-                                ✓ Safe: TXT-Forge is already ignored
+                                <span class="text-emerald-500/80">✓ .gitignore configured</span>
                             {:else if gitStatus === 'clean'}
-                                ⚠ Will add TXT-Forge to .gitignore
+                                <span class="text-amber-500/80">⚠ Will update .gitignore</span>
                             {:else}
-                                ./TXT-Forge
+                                ./TXT-Forge/
                             {/if}
                         </div>
                     </div>
                 </button>
 
+                <!-- 2. GLOBAL VAULT BUTTON -->
                 <button on:click={() => runForge('global')} disabled={isProcessing || selectedIds.length === 0}
-                    class="group relative overflow-hidden p-6 rounded-3xl bg-slate-900 border border-slate-700 hover:border-cyan-500 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed shadow-xl hover:shadow-cyan-500/20 hover:-translate-y-1">
-                    <div class="absolute inset-0 bg-cyan-500/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    class="group relative overflow-hidden h-32 rounded-3xl bg-slate-900 border border-slate-700 hover:border-cyan-500 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed shadow-xl hover:shadow-cyan-500/20 hover:-translate-y-1 flex flex-col justify-center px-8">
+
+                    <!-- Background Icon -->
+                    <svg class="absolute -right-6 -bottom-6 w-40 h-40 text-cyan-500/10 group-hover:text-cyan-500/20 transition-colors -rotate-12 pointer-events-none" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M22 6h-22v15h22v-15zm-2 13h-18v-11h18v11zm-4-9h-10v1h10v-1zm0 3h-10v1h10v-1zm0 3h-10v1h10v-1zm2-9h2v7h-2v-7z"/>
+                    </svg>
+
                     <div class="relative z-10">
-                        <div class="text-xl mb-2">🏦</div>
-                        <div class="font-bold text-lg text-white">Global Vault</div>
-                        <div class="text-xs text-slate-500 font-mono mt-1">~/.txt-forge-vault</div>
+                        <div class="mb-2">
+                            <div class="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center text-cyan-400 group-hover:scale-110 transition-transform">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                            </div>
+                        </div>
+
+                        <div class="font-bold text-lg text-white group-hover:text-cyan-200 transition-colors">Global Vault</div>
+
+                        <!-- Full Path Subtitle -->
+                        <div class="text-xs text-slate-500 font-mono mt-1 truncate pr-20" title={globalVaultPath}>
+                            {globalVaultPath || '~/.txt-forge-vault'}
+                        </div>
                     </div>
                 </button>
 
-                <button on:click={() => customPathOpen = true} disabled={isProcessing || selectedIds.length === 0}
-                    class="group relative overflow-hidden p-6 rounded-3xl bg-slate-900 border border-slate-700 hover:border-emerald-500 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed shadow-xl hover:shadow-emerald-500/20 hover:-translate-y-1">
-                    <div class="absolute inset-0 bg-emerald-500/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                <!-- 3. CUSTOM PATH BUTTON -->
+                <button
+                    on:click={handleCustomClick}
+                    disabled={isProcessing || selectedIds.length === 0}
+                    class="group relative overflow-hidden h-32 rounded-3xl bg-slate-900 border border-slate-700 hover:border-emerald-500 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed shadow-xl hover:shadow-emerald-500/20 hover:-translate-y-1 flex flex-col justify-center px-8"
+                >
+
+                    <!-- Background Icon -->
+                    <svg class="absolute -right-8 -bottom-8 w-44 h-44 text-emerald-500/10 group-hover:text-emerald-500/20 transition-colors rotate-6 pointer-events-none" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 2c5.514 0 10 4.486 10 10s-4.486 10-10 10-10-4.486-10-10 4.486-10 10-10zm0-2c-6.627 0-12 5.373-12 12s5.373 12 12 12 12-5.373 12-12-5.373-12-12-12zm-1 6h2v8h-2v-8zm1 12.25c-.69 0-1.25-.56-1.25-1.25s.56-1.25 1.25-1.25 1.25.56 1.25 1.25-.56 1.25-1.25 1.25z"/>
+                    </svg>
+
                     <div class="relative z-10">
-                        <div class="text-xl mb-2">📍</div>
-                        <div class="font-bold text-lg text-white">Custom Path</div>
-                        <div class="text-xs text-slate-500 font-mono mt-1">{customPath ? customPath : 'Select destination...'}</div>
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:scale-110 transition-transform">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                            </div>
+
+                            <!-- Shift Click Hint -->
+                            {#if savedCustomPath}
+                                <span class="hidden group-hover:inline-block text-[10px] font-bold uppercase bg-emerald-900/50 border border-emerald-500/30 text-emerald-300 px-2 py-1 rounded animate-fade-in-up">
+                                    Shift+Click to Quick Save
+                                </span>
+                            {/if}
+                        </div>
+
+                        <div class="font-bold text-lg text-white group-hover:text-emerald-200 transition-colors">Custom Location</div>
+
+                        <!-- Last Path Subtitle -->
+                        <div class="text-xs text-slate-500 font-mono mt-1 truncate pr-10" title={savedCustomPath}>
+                            {savedCustomPath ? savedCustomPath : 'Click to browse folders...'}
+                        </div>
                     </div>
                 </button>
 
@@ -644,30 +733,6 @@
 
     </div>
 
-    <!-- CUSTOM PATH MODAL -->
-    {#if customPathOpen}
-        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm" transition:fade>
-            <div class="bg-slate-900 border border-white/10 rounded-3xl p-8 w-full max-w-lg shadow-2xl relative">
-                <button on:click={() => customPathOpen = false} class="absolute top-4 right-4 text-slate-500 hover:text-white p-2">✕</button>
-                <h3 class="text-xl font-bold text-white mb-4">Custom Destination</h3>
-                <p class="text-sm text-slate-400 mb-6">Paste the absolute path where you want the forged files to be created.</p>
-                <input
-                    type="text"
-                    bind:value={customPath}
-                    placeholder="e.g. /Users/Dev/Project/Output"
-                    class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-4 text-sm text-white focus:border-indigo-500 outline-none mb-6 font-mono placeholder:text-slate-700"
-                    autofocus
-                />
-                <button
-                    on:click={() => runForge('custom')}
-                    disabled={!customPath}
-                    class="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold py-4 rounded-xl transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                    Forge Files Here
-                </button>
-            </div>
-        </div>
-    {/if}
 
     <!-- FOOTER -->
     <div class="mt-auto pt-16 pb-8 text-center">

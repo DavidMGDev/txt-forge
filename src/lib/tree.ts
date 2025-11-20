@@ -10,7 +10,19 @@ export interface TreeNode {
     depth: number;
 }
 
-const SYSTEM_HIDDEN = ['.git', '.DS_Store', 'Thumbs.db', 'node_modules', '.svelte-kit', '.txt-forge-vault', 'TXT-Forge'];
+const SYSTEM_HIDDEN = [
+    '.git',
+    '.DS_Store',
+    'Thumbs.db',
+    'node_modules',
+    '.svelte-kit',
+    '.txt-forge-vault',
+    'TXT-Forge',
+    'package-lock.json',
+    'yarn.lock',
+    'pnpm-lock.yaml',
+    'bun.lockb'
+];
 
 /**
  * specific ignore logic for the tree view (lighter than the full processor)
