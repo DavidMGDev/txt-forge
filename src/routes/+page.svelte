@@ -846,7 +846,7 @@
 
                 <div class="flex flex-col gap-4 w-full">
 
-                    <button on:click={exitApp} class="w-full py-4 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-orange-500/50 text-orange-100 hover:text-white font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-3 group">
+                    <button onclick={exitApp} class="w-full py-4 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-orange-500/50 text-orange-100 hover:text-white font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-3 group">
 
                         <span class="text-orange-500 group-hover:scale-125 transition-transform duration-300">⦿</span>
 
@@ -854,7 +854,7 @@
 
                     </button>
 
-                    <button on:click={() => showSuccessDialog = false} class="w-full py-3 text-slate-500 hover:text-slate-300 text-sm font-medium transition-colors">
+                    <button onclick={() => showSuccessDialog = false} class="w-full py-3 text-slate-500 hover:text-slate-300 text-sm font-medium transition-colors">
 
                         Continue Forging
 
@@ -886,7 +886,7 @@
 
                 <p class="text-slate-400 mb-8 text-sm">{dialogMessage}</p>
 
-                <button on:click={() => showErrorDialog = false} class="w-full py-3 bg-red-900/30 hover:bg-red-900/50 border border-red-500/30 text-red-200 font-bold rounded-xl transition-colors">
+                <button onclick={() => showErrorDialog = false} class="w-full py-3 bg-red-900/30 hover:bg-red-900/50 border border-red-500/30 text-red-200 font-bold rounded-xl transition-colors">
 
                     Close
 
@@ -975,7 +975,7 @@
 
                     </div>
 
-                    <button on:click={toggleTemplatesSection} class="px-3 py-1 rounded-full border border-white/10 bg-white/5 hover:bg-white/10 text-[10px] uppercase font-bold tracking-wider text-orange-400/80 hover:text-orange-300 transition-all hover:shadow-[0_0_10px_rgba(251,146,60,0.2)] hover:border-orange-500/30">
+                    <button onclick={toggleTemplatesSection} class="px-3 py-1 rounded-full border border-white/10 bg-white/5 hover:bg-white/10 text-[10px] uppercase font-bold tracking-wider text-orange-400/80 hover:text-orange-300 transition-all hover:shadow-[0_0_10px_rgba(251,146,60,0.2)] hover:border-orange-500/30">
 
                         {templatesExpanded ? 'Reset to Auto' : 'Edit Templates'}
 
@@ -993,7 +993,7 @@
 
                                 <button
 
-                                    on:click={() => toggleTemplate(tmpl.id)}
+                                    onclick={() => toggleTemplate(tmpl.id)}
 
                                     class="w-full relative flex items-center gap-4 bg-white/5 hover:bg-orange-500/10 border border-white/5 hover:border-orange-500/30 text-slate-200 px-5 py-4 rounded-2xl transition-all duration-300 hover:shadow-[0_0_20px_rgba(249,115,22,0.1)] hover:-translate-y-0.5"
 
@@ -1049,7 +1049,7 @@
 
                         <p class="text-xs uppercase tracking-widest">No templates detected.</p>
 
-                        <button on:click={toggleTemplatesSection} class="text-orange-400 text-xs mt-3 hover:text-orange-300 font-bold">Select manually</button>
+                        <button onclick={toggleTemplatesSection} class="text-orange-400 text-xs mt-3 hover:text-orange-300 font-bold">Select manually</button>
 
                      </div>
 
@@ -1067,7 +1067,7 @@
 
                                 <button
 
-                                    on:click={() => toggleTemplate(tmpl.id)}
+                                    onclick={() => toggleTemplate(tmpl.id)}
 
                                     class="flex items-center gap-3 px-3 py-3 rounded-lg text-xs text-left transition-all bg-slate-900/40 text-slate-400 border border-transparent hover:bg-slate-800 hover:text-orange-200 hover:border-orange-500/20 group"
 
@@ -1122,7 +1122,7 @@
 
                     <button
 
-                        on:click={scrollToTree}
+                        onclick={scrollToTree}
 
                         class="px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all border duration-300
 
@@ -1268,7 +1268,7 @@
 
                     </div>
 
-                    <button on:click={() => settingsOpen = !settingsOpen} class="w-8 h-8 flex items-center justify-center rounded-full bg-white/5 hover:bg-orange-500 text-slate-400 hover:text-white transition-all">
+                    <button onclick={() => settingsOpen = !settingsOpen} class="w-8 h-8 flex items-center justify-center rounded-full bg-white/5 hover:bg-orange-500 text-slate-400 hover:text-white transition-all">
 
                         ⚙
 
@@ -1282,11 +1282,13 @@
 
                         <div class="col-start-1 row-start-1 pt-1" transition:fade={{ duration: 200 }}>
 
-                            <label class="text-[10px] text-orange-400 uppercase font-bold mb-2 block">Max Characters per File</label>
+                            <label for="maxCharsInput" class="text-[10px] text-orange-400 uppercase font-bold mb-2 block">Max Characters per File</label>
 
                             <div class="flex gap-4 items-center">
 
                                 <input
+
+                                    id="maxCharsInput"
 
                                     type="range" min="10000" max="200000" step="5000"
 
@@ -1330,7 +1332,7 @@
 
                 <!-- SAVE TO PROJECT -->
 
-                <button on:click={() => runForge('root')} disabled={isProcessing || selectedIds.length === 0}
+                <button onclick={() => runForge('root')} disabled={isProcessing || selectedIds.length === 0}
 
                     class="group relative overflow-hidden min-h-[8rem] rounded-3xl bg-black/50 border border-white/5 hover:border-orange-500/50 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed shadow-xl hover:shadow-[0_0_30px_rgba(249,115,22,0.2)] hover:-translate-y-1 flex flex-col justify-center px-8 py-6">
 
@@ -1396,7 +1398,7 @@
 
                 <!-- SAVE TO GLOBAL VAULT -->
 
-                <button on:click={() => runForge('global')} disabled={isProcessing || selectedIds.length === 0}
+                <button onclick={() => runForge('global')} disabled={isProcessing || selectedIds.length === 0}
 
                     class="group relative overflow-hidden min-h-[8rem] rounded-3xl bg-black/50 border border-white/5 hover:border-violet-500/50 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed shadow-xl hover:shadow-[0_0_30px_rgba(139,92,246,0.2)] hover:-translate-y-1 flex flex-col justify-center px-8 py-6">
 
@@ -1437,7 +1439,7 @@
 
                 <button
 
-                    on:click={handleCustomClick}
+                    onclick={handleCustomClick}
 
                     disabled={isProcessing || selectedIds.length === 0}
 

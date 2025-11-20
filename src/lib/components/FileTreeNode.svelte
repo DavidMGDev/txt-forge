@@ -118,7 +118,7 @@
 
         <!-- UPDATED Expander -->
         <button
-            on:click|stopPropagation={handleExpand}
+            onclick={(e) => { e.stopPropagation(); handleExpand(); }}
             class="w-5 h-5 flex items-center justify-center rounded hover:bg-white/10 text-slate-500 transition-transform duration-200 {expanded ? 'rotate-90 text-orange-400' : ''} {isExpandable ? '' : 'invisible'}"
         >
 
@@ -133,7 +133,7 @@
 
         <!-- Checkbox (Keep existing) -->
         <button
-            on:click|stopPropagation={handleToggle}
+            onclick={(e) => { e.stopPropagation(); handleToggle(); }}
             class="w-4 h-4 rounded border flex items-center justify-center transition-all
 
             {isFullyChecked || isIndeterminate
@@ -157,7 +157,13 @@
 
         <!-- Name -->
 
-        <div class="flex items-center gap-2 text-sm font-mono truncate cursor-pointer flex-1" on:click={handleExpand}>
+        <div
+            class="flex items-center gap-2 text-sm font-mono truncate cursor-pointer flex-1"
+            role="button"
+            tabindex="0"
+            onclick={handleExpand}
+            onkeydown={(e) => { if(e.key === 'Enter' || e.key === ' ') handleExpand(); }}
+        >
 
             {#if node.type === 'folder'}
 
