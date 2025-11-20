@@ -255,9 +255,9 @@
 
 
 
-        // Wait 1.5s for UX (Loader is visible)
+        // UPDATED: Reduced wait time to 1 second
 
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        await new Promise(resolve => setTimeout(resolve, 1000));
 
 
 
@@ -319,7 +319,9 @@
 
             const initialSet = new Set<string>();
 
-            const processNode = (nodes: any[]) => {
+            // UPDATED: Added parentIgnored parameter to handle nested ignored folders (e.g. node_modules contents)
+
+            const processNode = (nodes: any[], parentIgnored: boolean = false) => {
 
                 const currentLevelPaths: string[] = [];
 
@@ -331,9 +333,15 @@
 
                     currentLevelPaths.push(node.path); // Add self
 
-                    // Logic for initial selection (same as before)
+                    // A node is effectively ignored if it is marked ignored OR its parent is ignored
 
-                    if (!node.isIgnored) {
+                    const isEffectivelyIgnored = node.isIgnored || parentIgnored;
+
+
+
+                    // Logic for initial selection: Only add if NOT effectively ignored
+
+                    if (!isEffectivelyIgnored) {
 
                         initialSet.add(node.path);
 
@@ -343,9 +351,9 @@
 
                     if (node.type === 'folder' && node.children) {
 
-                        // Recursively get all children paths
+                        // Recursively get all children paths, PASSING DOWN the ignored state
 
-                        const childrenPaths = processNode(node.children);
+                        const childrenPaths = processNode(node.children, isEffectivelyIgnored);
 
                         // Map this folder path to ALL its descendants
 
@@ -365,7 +373,9 @@
 
             };
 
-            processNode(treeNodes);
+            // Start recursion assuming root is not ignored
+
+            processNode(treeNodes, false);
 
             selectedFilePaths = initialSet;
 
