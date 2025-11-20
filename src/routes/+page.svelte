@@ -301,10 +301,10 @@
 
     <!-- TOAST NOTIFICATIONS (UPDATED) -->
     <!-- Added 'items-center' to wrapper to strictly center items horizontally -->
-    <div class="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 flex flex-col-reverse items-center gap-3 w-full max-w-md pointer-events-none">
+    <div class="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 flex flex-col-reverse items-center gap-3 max-w-md pointer-events-none">
         {#each toasts as toast (toast.id)}
             <!-- Changed y to 100 (comes from lower), easing to cubicOut (smooth/linear feel) -->
-            <div animate:flip transition:fly={{ y: 100, duration: 500, easing: cubicOut }} class="pointer-events-auto shadow-2xl rounded-xl p-4 border backdrop-blur-xl flex gap-4 items-center relative group w-full
+            <div animate:flip transition:fly={{ x: 0, y: 100, duration: 500, easing: cubicOut }} class="pointer-events-auto shadow-2xl rounded-xl p-4 border backdrop-blur-xl flex gap-4 items-center relative group w-full
                 {toast.type === 'success' ? 'bg-emerald-950/95 border-emerald-500/50 text-emerald-100 shadow-emerald-900/20' : 'bg-red-950/95 border-red-500/50 text-red-100 shadow-red-900/20'}">
 
                 <div class="text-2xl pl-1">
