@@ -27,11 +27,11 @@
     "codebase",
     "converter"
   ],
-  "author": "Your Name",
+  "author": "DavidMGDev",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/YOUR_USERNAME/txt-forge.git"
+    "url": "https://github.com/DavidMGDev/txt-forge.git"
   },
   "devDependencies": {
     "@sveltejs/adapter-node": "^5.0.0",
