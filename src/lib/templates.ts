@@ -486,7 +486,7 @@ export const templates: CodebaseTemplate[] = [
   {
     id: "spring-boot",
     name: "Spring Boot",
-    extensions: [".properties", ".yml", ".yaml", ".java", ".kt"],
+    extensions: [], // CHANGED: Removed .java, .kt, etc to prevent false positives
     ignores: [
       "target/",
       "*.jar",

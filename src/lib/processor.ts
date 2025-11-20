@@ -6,6 +6,21 @@ import { templates, type CodebaseTemplate } from '$lib/templates';
 // ADD THIS:
 import { logDebug } from '$lib/server/logger.js';
 
+// --- ADD THIS CONSTANT ---
+
+const BINARY_EXTENSIONS = new Set([
+    // Images
+    '.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.svg', '.bmp', '.tiff', '.heic',
+    // Fonts
+    '.ttf', '.otf', '.woff', '.woff2', '.eot',
+    // Audio/Video
+    '.mp3', '.wav', '.ogg', '.mp4', '.webm', '.mov', '.avi', '.mkv',
+    // Archives/Binaries
+    '.pdf', '.zip', '.tar', '.gz', '.7z', '.rar', '.exe', '.dll', '.so', '.dylib', '.bin', '.apk', '.aab',
+    // Android Specific
+    '.keystore', '.jks'
+]);
+
 export type SaveMode = 'root' | 'global' | 'custom';
 
 export interface ProcessConfig {
@@ -397,8 +412,15 @@ async function scanFiles(rootDir: string, currentDir: string, extensions: string
         if (entry.isDirectory()) {
             results = results.concat(await scanFiles(rootDir, fullPath, extensions, ignores));
         } else {
-            const ext = path.extname(entry.name);
-            // UPDATED: If extensions list is empty, accept all (used for folder selection)
+            const ext = path.extname(entry.name).toLowerCase();
+
+            // --- ADD THIS CHECK ---
+            if (BINARY_EXTENSIONS.has(ext)) {
+                continue;
+            }
+            // ----------------------
+
+            // UPDATED: If extensions list is empty, accept all
             if (extensions.length === 0 || extensions.includes(ext)) {
                 results.push(fullPath);
             }
