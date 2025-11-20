@@ -14,10 +14,9 @@ export interface ProcessConfig {
     customPath?: string;
     templateIds: string[];
     maxChars: number;
-    // NEW: Optional explicit list of files to process (overrides templates)
     selectedFiles?: string[];
-    // NEW: Toggle for tree context
-    includeIgnoredInTree?: boolean;
+    // UPDATED: Inverted Logic
+    hideIgnoredInTree?: boolean;
 }
 
 interface ProcessResult {
@@ -238,15 +237,13 @@ export async function processFiles(config: ProcessConfig): Promise<ProcessResult
         }
 
         // 3. Determine Tree Files (The Visual Map)
-        if (config.includeIgnoredInTree) {
-            // If toggle ON: We want a broader scan.
+        if (!config.hideIgnoredInTree) {
+            // If "Hide" is FALSE (Default): We want the broad scan (show context).
             // We scan everything, BUT we stop at massive folders.
-            // We pass an EMPTY extension list (accept all extensions).
-            // We pass a minimal ignore list (only massive folders).
             const massiveIgnores = Array.from(massiveFolders);
             filesForTree = await scanFiles(sourceRoot, sourceRoot, [], massiveIgnores);
         } else {
-            // If toggle OFF: Tree matches content exactly.
+            // If "Hide" is TRUE: Tree matches content exactly (clean tree).
             filesForTree = [...filesToProcess];
         }
 

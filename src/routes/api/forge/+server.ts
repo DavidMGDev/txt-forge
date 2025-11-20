@@ -11,7 +11,8 @@ export async function POST({ request }) {
         customPath: body.customPath,
         templateIds: body.templateIds,
         maxChars: body.maxChars,
-        selectedFiles: body.selectedFiles
+        selectedFiles: body.selectedFiles,
+        hideIgnoredInTree: body.hideIgnoredInTree // <--- ADDED
     });
 
     if (result.success) {

@@ -486,7 +486,7 @@ export const templates: CodebaseTemplate[] = [
   {
     id: "spring-boot",
     name: "Spring Boot",
-    extensions: [".properties", ".yml", ".yaml"],
+    extensions: [".properties", ".yml", ".yaml", ".java", ".kt"],
     ignores: [
       "target/",
       "*.jar",
@@ -502,7 +502,8 @@ export const templates: CodebaseTemplate[] = [
     ],
     iconUrl:
       "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/springboot.svg",
-    triggers: ["pom.xml", "build.gradle", "application.properties"],
+    // REMOVED build.gradle to prevent false positives with Android
+    triggers: ["mvnw", "mvnw.cmd", "application.properties", "application.yml"],
   },
   {
     id: "expressjs",
@@ -771,6 +772,59 @@ export const templates: CodebaseTemplate[] = [
     iconUrl: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/prisma.svg",
     triggers: ["schema.prisma", "prisma/"],
   },
+  {
+    id: "android",
+    name: "Android",
+    extensions: [".kt", ".java", ".xml", ".gradle", ".pro"],
+    ignores: [
+      ".gradle/",
+      "local.properties",
+      ".idea/",
+      "build/",
+      "app/build/",
+      "*.iml",
+      "*.hprof",
+      "captures/",
+      ".cxx/",
+      "*.apk",
+      "*.aab"
+    ],
+    iconUrl: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/android.svg",
+    triggers: ["AndroidManifest.xml", "app/build.gradle.kts", "app/build.gradle", "local.properties"],
+  },
+  {
+    id: "react-native",
+    name: "React Native",
+    extensions: [".js", ".jsx", ".ts", ".tsx", ".java", ".m", ".h", ".podspec"],
+    ignores: [
+      "node_modules/",
+      "android/build/",
+      "android/app/build/",
+      "ios/Pods/",
+      "ios/build/",
+      "Gemfile.lock",
+      "Podfile.lock",
+      "*.apk",
+      "*.ipa"
+    ],
+    iconUrl: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/react.svg",
+    triggers: ["react-native.config.js", "android/gradelew", "ios/Podfile"],
+  },
+  {
+    id: "expo",
+    name: "Expo",
+    extensions: [".js", ".jsx", ".ts", ".tsx", "app.json"],
+    ignores: [
+      "node_modules/",
+      ".expo/",
+      "web-build/",
+      "dist/",
+      "npm-debug.log*",
+      "yarn-debug.log*"
+    ],
+    iconUrl: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/expo.svg",
+    triggers: ["app.json", "babel.config.js"],
+  }
 ];
 
 /**

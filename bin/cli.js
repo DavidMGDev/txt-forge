@@ -23,7 +23,8 @@ const isDebug = args.includes('--debug') || args.includes('-d');
 // Auto Mode Flags
 const isAuto = args.includes('--auto') || args.includes('-a');
 const isVault = args.includes('--vault') || args.includes('--global') || args.includes('-v');
-const isIgnored = args.includes('--ignored') || args.includes('-i');
+// CHANGED: -i now means "Hide Ignored" (isHidden)
+const isHidden = args.includes('--ignore') || args.includes('-i');
 
 // Custom Path Parsing (-c "path" or --custom "path")
 let customPath = null;
@@ -43,7 +44,8 @@ if (!isAuto) {
     console.log('\x1b[36m%s\x1b[0m', '› Initializing TXT-Forge...');
 } else {
     console.log('\x1b[36m%s\x1b[0m', '› TXT-Forge Auto-Mode Initiated...');
-    console.log('\x1b[90m%s\x1b[0m', `  Options: [Vault: ${isVault}] [Show Ignored: ${isIgnored}]`);
+    // UPDATED text to be clearer
+    console.log('\x1b[90m%s\x1b[0m', `  Options: [Vault: ${isVault}] [Ignored Files: ${isHidden ? 'HIDDEN' : 'VISIBLE'}]`);
 }
 
 if (isDebug) console.log('\x1b[33m%s\x1b[0m', '› Debug Mode Enabled');
@@ -108,7 +110,7 @@ async function startServer() {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         saveToVault: isVault,
-                        includeIgnoredInTree: isIgnored,
+                        hideIgnoredInTree: isHidden, // <--- CHANGED
                         customPath: customPath // Pass the path
                     })
                 });
@@ -127,7 +129,13 @@ async function startServer() {
                     console.log('\x1b[90m%s\x1b[0m', `  Generated ${result.files.length} file(s).`);
 
                     // Open the folder automatically
-                    await open(result.outputPath);
+                    // FIX: Ensure we wait for the OS command, and handle errors gracefully
+                    try {
+                        await open(result.outputPath);
+                    } catch (openErr) {
+                        console.error('\x1b[33m%s\x1b[0m', '⚠ Could not auto-open folder (Permissions/OS restriction).');
+                    }
+
                 } else {
                     console.error('\x1b[31m%s\x1b[0m', '✕ Error:', result.message);
                     if (result.ids) console.log('  Detected:', result.ids.join(', '));
@@ -137,8 +145,12 @@ async function startServer() {
                 if (isDebug) console.error(e);
             } finally {
                 // Cleanup and Exit
-                server.kill();
-                process.exit(0);
+                // FIX: Add a small delay before killing the process to ensure the 'open' command
+                // fully detaches from the Node event loop.
+                setTimeout(() => {
+                    server.kill();
+                    process.exit(0);
+                }, 500);
             }
         } else {
             // --- UI MODE LOGIC ---

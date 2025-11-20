@@ -53,7 +53,8 @@
     let treeExpanded = $state(false);
 
     // NEW: Toggle for Tree Generation context
-    let includeIgnoredInTree = $state(false);
+    // UPDATED: Variable reflects UI toggle state (ON = Include files)
+    let includeIgnoredFiles = $state(true);
 
     let selectedFilePaths: Set<string> = $state(new Set());
 
@@ -80,9 +81,16 @@
 
     // --- COMPUTED ---
 
-    let selectedTemplateObjects = $derived(templates.filter(t => selectedIds.includes(t.id)));
+    // UPDATED: Added .sort() to display alphabetically
+    let selectedTemplateObjects = $derived(templates
+        .filter(t => selectedIds.includes(t.id))
+        .sort((a, b) => a.name.localeCompare(b.name))
+    );
 
-    let unselectedTemplateObjects = $derived(templates.filter(t => !selectedIds.includes(t.id)));
+    let unselectedTemplateObjects = $derived(templates
+        .filter(t => !selectedIds.includes(t.id))
+        .sort((a, b) => a.name.localeCompare(b.name))
+    );
 
     let selectedFileCount = $derived.by(() => {
 
@@ -670,7 +678,9 @@
 
                     selectedFiles: payloadFiles,
 
-                    includeIgnoredInTree // <--- Added param
+                    // UPDATED: Invert logic for backend.
+                    // If "Include" is TRUE, then "Hide" is FALSE.
+                    hideIgnoredInTree: !includeIgnoredFiles
 
                 })
 
@@ -1107,54 +1117,6 @@
 
                     </div>
 
-                    <!-- NEW TOGGLE UI -->
-                    <div class="flex items-center mr-4 group relative">
-
-                         <label class="flex items-center gap-2 cursor-pointer">
-
-                            <div class="relative">
-
-                                <input type="checkbox" bind:checked={includeIgnoredInTree} class="sr-only peer">
-
-                                <div class="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-slate-400 after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-600 peer-checked:after:bg-white"></div>
-
-                            </div>
-
-                            <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500 peer-checked:text-orange-200 transition-colors">
-
-                                Show Ignored in Tree
-
-                            </span>
-
-                         </label>
-
-
-
-                         <!-- Tooltip -->
-
-                         <!-- UPDATED: Adjusted position to avoid any potential clipping even without overflow-hidden -->
-
-                         <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-64 bg-black/95 backdrop-blur-md border border-white/10 p-4 rounded-xl shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 text-[10px] text-slate-400 leading-relaxed">
-
-                            <strong class="text-orange-400 block mb-1 uppercase tracking-wider">Tree Map Only</strong>
-
-                            When enabled, ignored files (like <code class="text-slate-300">package-lock.json</code>) will appear in <code class="text-slate-300">Source-Tree.txt</code> to give the AI full context of your file structure.
-
-                            <br><br>
-
-                            <span class="text-slate-500 italic">Note: Massive folders like node_modules remain hidden.</span>
-
-
-
-                            <!-- Arrow -->
-
-                            <div class="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-black/95"></div>
-
-                         </div>
-
-                    </div>
-
-                    <!-- END TOGGLE UI -->
 
                     <button
 
@@ -1231,6 +1193,70 @@
         <!-- RIGHT COLUMN: Actions -->
 
         <div class="flex flex-col gap-6 animate-fade-in-up" style="animation-delay: 0.2s;">
+
+            <!-- INCLUDE IGNORED PANEL (Renamed & Tooltip Restored) -->
+            <!-- Removed overflow-hidden to allow tooltip popup -->
+            <div class="bg-slate-900/40 backdrop-blur-xl border border-white/10 rounded-3xl p-6 shadow-2xl flex items-center justify-between relative z-20">
+
+                <!-- Label Section -->
+
+                <div class="flex flex-col cursor-help group/info relative">
+
+                    <div class="flex items-center gap-2">
+
+                        <span class="text-xs font-bold text-slate-300 uppercase tracking-[0.2em]">Include Ignored Files</span>
+
+                        <div class="w-4 h-4 rounded-full bg-slate-800 flex items-center justify-center text-[10px] text-slate-500 border border-slate-700">?</div>
+
+                    </div>
+
+                    <span class="text-[10px] text-slate-500 mt-1">Controls <code class="text-orange-400">Source-Tree.txt</code> context</span>
+
+
+
+                    <!-- RESTORED TOOLTIP -->
+
+                    <div class="absolute bottom-full left-0 mb-3 w-64 bg-black/95 backdrop-blur-md border border-white/10 p-4 rounded-xl shadow-2xl opacity-0 group-hover/info:opacity-100 transition-opacity pointer-events-none z-50 text-[10px] text-slate-400 leading-relaxed translate-y-2 group-hover/info:translate-y-0 duration-200">
+
+                        <strong class="text-orange-400 block mb-1 uppercase tracking-wider">Tree Map Context</strong>
+
+                        When <strong>ON</strong>, ignored files (like <code class="text-slate-300">package-lock.json</code>) will appear in <code class="text-slate-300">Source-Tree.txt</code> to give the AI full context of your file structure, even if the file content itself is not exported.
+
+                        <br><br>
+
+                        <span class="text-slate-500 italic">Turn <strong>OFF</strong> to hide them for a cleaner tree.</span>
+
+                        <!-- Arrow -->
+
+                        <div class="absolute top-full left-8 -mt-1 border-4 border-transparent border-t-black/95"></div>
+
+                    </div>
+
+                </div>
+
+
+
+                <!-- Toggle Switch -->
+
+                <label class="flex items-center gap-3 cursor-pointer group relative">
+
+                    <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500 group-hover:text-orange-200 transition-colors w-12 text-right">
+
+                        {includeIgnoredFiles ? 'Included' : 'Hidden'}
+
+                    </span>
+
+                    <div class="relative">
+
+                        <input type="checkbox" bind:checked={includeIgnoredFiles} class="sr-only peer">
+
+                        <div class="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-slate-400 after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600 peer-checked:after:bg-white"></div>
+
+                    </div>
+
+                </label>
+
+            </div>
 
             <!-- SETTINGS CARD -->
 
