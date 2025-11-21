@@ -15,6 +15,8 @@ const BINARY_EXTENSIONS = new Set([
     '.ttf', '.otf', '.woff', '.woff2', '.eot',
     // Audio/Video
     '.mp3', '.wav', '.ogg', '.mp4', '.webm', '.mov', '.avi', '.mkv',
+    // 3D Models (Issue #3 Fix)
+    '.fbx', '.obj', '.blend', '.glb', '.gltf', '.3ds',
     // Archives/Binaries
     '.pdf', '.zip', '.tar', '.gz', '.7z', '.rar', '.exe', '.dll', '.so', '.dylib', '.bin', '.apk', '.aab',
     // Android Specific

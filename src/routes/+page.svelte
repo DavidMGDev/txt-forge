@@ -770,7 +770,13 @@
 
             });
 
-            // UPDATE LOCAL STATE so the button knows we are clean
+
+
+            // Issue #4 Fix: Wrap state update in tick to prevent derived state conflicts
+
+            // during event bubbling or transitions
+
+            await tick();
 
             projectConfig = config;
 
@@ -790,13 +796,15 @@
 
         isProcessing = true;
 
-        let payloadFiles: string[] | undefined = undefined;
+        // Issue #1 Fix: Always send the selection if it exists.
 
-        if (treeExpanded) {
+        // Do not rely on 'treeExpanded' state.
 
-            payloadFiles = Array.from(selectedFilePaths).filter(p => true);
+        // If selectedFilePaths contains the default set, the backend processes that.
 
-        }
+        // If the user deselected items (even if tree is closed), this Set reflects that.
+
+        let payloadFiles: string[] = Array.from(selectedFilePaths);
 
         try {
 
@@ -830,13 +838,13 @@
 
             if (result.success) {
 
-                await fetch('/api/open', {
+                // Issue #4 Fix: Ensure state mutation happens cleanly after await
 
-                    method: 'POST',
+                // preventing conflicts with transitions.
 
-                    body: JSON.stringify({ path: result.outputPath })
+                await tick();
 
-                });
+
 
                 successOutputPath = result.outputPath;
 

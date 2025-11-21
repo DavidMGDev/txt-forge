@@ -55,7 +55,14 @@ export function saveProjectConfig(projectPath, config) {
             data = JSON.parse(fs.readFileSync(PROJECTS_FILE, 'utf-8'));
         }
         const normalizedPath = path.resolve(projectPath);
-        data[normalizedPath] = config;
+
+        // Issue #2 Fix: Explicitly replace the key with the new config object.
+        // This ensures no stale properties remain if the user changed structure.
+        data[normalizedPath] = {
+            ...config,
+            lastUpdated: new Date().toISOString() // Optional: Helps debugging
+        };
+
         fs.writeFileSync(PROJECTS_FILE, JSON.stringify(data, null, 2));
     } catch (e) {
         console.error("Failed to save project config", e);

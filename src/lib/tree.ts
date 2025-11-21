@@ -36,6 +36,8 @@ const SYSTEM_HIDDEN = [
 const MEDIA_EXTENSIONS = new Set([
     '.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.svg', '.bmp', '.tiff',
     '.mp3', '.wav', '.ogg', '.mp4', '.webm', '.mov', '.avi',
+    // Issue #3 Fix: Add 3D formats here
+    '.fbx', '.obj', '.blend', '.glb', '.gltf', '.3ds',
     '.pdf', '.zip', '.tar', '.gz', '.7z', '.rar',
     '.exe', '.dll', '.so', '.dylib', '.bin',
     '.ttf', '.otf', '.woff', '.woff2', '.eot'
