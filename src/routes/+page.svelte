@@ -46,6 +46,20 @@
 
     let globalVaultPath = $state('');
 
+    // Debug State
+
+    let isDebug = $state(false);
+
+    function logUI(msg: string, data: any = '') {
+
+        if (isDebug) {
+
+            console.log(`%c[UI DEBUG] ${msg}`, 'color: #f97316; font-weight: bold;', data);
+
+        }
+
+    }
+
     // TREE STATE
 
     let treeNodes: any[] = $state([]);
@@ -219,7 +233,11 @@
 
             globalVaultPath = data.globalVaultPath;
 
-            projectConfig = data.projectConfig; // <--- NEW
+            projectConfig = data.projectConfig;
+
+            isDebug = data.isDebug; // <--- Capture debug state
+
+            logUI('Debug mode active. Session:', sessionId);
 
             // Apply Config if exists
             if (projectConfig) {
@@ -794,6 +812,8 @@
 
     async function runForge(mode: 'root' | 'global' | 'custom') {
 
+        logUI('runForge initiated', mode);
+
         isProcessing = true;
 
         // Issue #1 Fix: Always send the selection if it exists.
@@ -807,6 +827,8 @@
         let payloadFiles: string[] = Array.from(selectedFilePaths);
 
         try {
+
+            logUI('Sending fetch request to /api/forge');
 
             const res = await fetch('/api/forge', {
 
@@ -834,23 +856,45 @@
 
             });
 
+            logUI('Fetch complete, parsing JSON...');
+
             const result = await res.json();
+
+            logUI('Result received', result);
 
             if (result.success) {
 
-                // Issue #4 Fix: Ensure state mutation happens cleanly after await
+                logUI('Success. Waiting for tick...');
 
-                // preventing conflicts with transitions.
+                // Issue #4 Fix: Ensure state mutation happens cleanly after await
 
                 await tick();
 
 
 
+                logUI('Tick complete. Setting success dialog state...');
+
                 successOutputPath = result.outputPath;
 
                 showSuccessDialog = true;
 
+
+
+                // Separate trigger for opening folder
+
+                logUI('Triggering /api/open...');
+
+                await fetch('/api/open', {
+
+                    method: 'POST',
+
+                    body: JSON.stringify({ path: result.outputPath })
+
+                });
+
             } else {
+
+                logUI('Backend returned failure', result.message);
 
                 dialogTitle = 'Forging Failed';
 
@@ -862,6 +906,10 @@
 
         } catch (e) {
 
+            console.error(e); // Always log real errors
+
+            logUI('Exception caught', e);
+
             dialogTitle = 'Connection Error';
 
             dialogMessage = 'Failed to communicate with server.';
@@ -871,6 +919,8 @@
         } finally {
 
             isProcessing = false;
+
+            logUI('runForge sequence finished');
 
         }
 

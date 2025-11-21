@@ -24,6 +24,8 @@ export async function GET() {
         sessionId,
         savedCustomPath: config.lastCustomPath || '',
         globalVaultPath: globalPath,
-        projectConfig // <--- NEW
+        projectConfig,
+        // DEBUG: Pass the env flag to the frontend
+        isDebug: process.env.TXT_FORGE_DEBUG === 'true'
     });
 }
