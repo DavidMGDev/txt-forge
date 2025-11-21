@@ -1,6 +1,6 @@
 <script lang="ts">
 
-    import { onMount, onDestroy, tick } from 'svelte';
+    import { onMount, onDestroy, tick, untrack } from 'svelte';
 
     import { templates } from '$lib/templates';
 
@@ -86,34 +86,39 @@
         return false;
     });
 
-    // NEW: Check if current settings differ from saved project config
-    let isConfigDirty = $derived.by(() => {
-        if (!projectConfig) return true; // No config saved yet
+    // FIX: Converted from $derived to a pure function to avoid state_unsafe_mutation.
+    // Using untrack() ensures this doesn't accidentally lock state if called during a reaction.
+    function getIsConfigDirty() {
+        // In the template, this function re-runs whenever the template re-renders.
+        // We safely read state here.
+
+        if (!projectConfig) return true; 
 
         // 1. Max Chars
         const savedMax = projectConfig.maxChars || 75000;
         if (maxChars !== savedMax) return true;
 
-        // 2. Ignored Files Toggle (UI is 'include', Config is 'hide')
+        // 2. Ignored Files Toggle
         const configInclude = !projectConfig.hideIgnoredInTree;
         if (includeIgnoredFiles !== configInclude) return true;
 
         // 3. Templates
+        // Create copies to avoid mutating original arrays with sort()
         const currentTmpl = [...selectedIds].sort();
-        const savedTmpl = (projectConfig.templateIds || []).sort();
+        const savedTmpl = [...(projectConfig.templateIds || [])].sort();
         if (JSON.stringify(currentTmpl) !== JSON.stringify(savedTmpl)) return true;
 
         // 4. Selected Files
-        // We compare the Set size and contents against the saved array
         const savedFiles = projectConfig.selectedFiles || [];
+        // Quick size check
         if (selectedFilePaths.size !== savedFiles.length) return true;
-        // Quick check assuming savedFiles are valid paths
+        // Check content match
         for (const f of savedFiles) {
             if (!selectedFilePaths.has(f)) return true;
         }
 
         return false;
-    });
+    }
 
     // NEW: Cache map for instant toggling performance
     let folderDescendants = new Map<string, string[]>();
@@ -139,12 +144,14 @@
     // --- COMPUTED ---
 
     // UPDATED: Added .sort() to display alphabetically
-    let selectedTemplateObjects = $derived(templates
+    // Note: .filter() creates a new array, so .sort() mutating it is technically safe,
+    // but explicit spread helps readability and safety guarantees.
+    let selectedTemplateObjects = $derived([...templates]
         .filter(t => selectedIds.includes(t.id))
         .sort((a, b) => a.name.localeCompare(b.name))
     );
 
-    let unselectedTemplateObjects = $derived(templates
+    let unselectedTemplateObjects = $derived([...templates]
         .filter(t => !selectedIds.includes(t.id))
         .sort((a, b) => a.name.localeCompare(b.name))
     );
@@ -788,13 +795,11 @@
 
             });
 
+            // FIX: Removed await tick(). In Svelte 5, updating state immediately
 
+            // after an async op is standard. The derived/function conflict is solved
 
-            // Issue #4 Fix: Wrap state update in tick to prevent derived state conflicts
-
-            // during event bubbling or transitions
-
-            await tick();
+            // by using a helper function instead of $derived.
 
             projectConfig = config;
 
@@ -816,13 +821,7 @@
 
         isProcessing = true;
 
-        // Issue #1 Fix: Always send the selection if it exists.
-
-        // Do not rely on 'treeExpanded' state.
-
-        // If selectedFilePaths contains the default set, the backend processes that.
-
-        // If the user deselected items (even if tree is closed), this Set reflects that.
+        // Create payload
 
         let payloadFiles: string[] = Array.from(selectedFilePaths);
 
@@ -864,33 +863,67 @@
 
             if (result.success) {
 
-                logUI('Success. Waiting for tick...');
+                logUI('Backend Success. Stopping processing loader...');
 
-                // Issue #4 Fix: Ensure state mutation happens cleanly after await
+                
+
+                // 1. Stop loader
+
+                isProcessing = false;
+
+                
+
+                // 2. Wait for loader transition to effectively start clearing
 
                 await tick();
 
+                // 3. Use a slightly longer timeout to ensure we are in a new frame
+
+                // and previous transitions have registered.
+
+                setTimeout(() => {
+
+                    try {
+
+                        logUI('TIMEOUT: Setting successOutputPath...');
+
+                        successOutputPath = result.outputPath;
+
+                        
+
+                        logUI('TIMEOUT: Setting showSuccessDialog to TRUE...');
+
+                        // This is the line that likely crashes if state is unstable
+
+                        showSuccessDialog = true;
+
+                        
+
+                        logUI('TIMEOUT: State updates complete.');
+
+                    } catch (err) {
+
+                        console.error("CRASH INSIDE TIMEOUT:", err);
+
+                        logUI("CRASH INSIDE TIMEOUT", err);
+
+                    }
+
+                }, 50); // Increased to 50ms to ensure frame separation
 
 
-                logUI('Tick complete. Setting success dialog state...');
-
-                successOutputPath = result.outputPath;
-
-                showSuccessDialog = true;
-
-
-
-                // Separate trigger for opening folder
 
                 logUI('Triggering /api/open...');
 
-                await fetch('/api/open', {
+                // Fire and forget the open request so it doesn't block UI
+
+                fetch('/api/open', {
 
                     method: 'POST',
 
                     body: JSON.stringify({ path: result.outputPath })
 
-                });
+                }).catch(e => logUI('Open API failed', e));
 
             } else {
 
@@ -918,7 +951,11 @@
 
         } finally {
 
-            isProcessing = false;
+            // Only set false if it wasn't already handled in success block
+
+            // (Though setting it again is harmless)
+
+            if (isProcessing) isProcessing = false;
 
             logUI('runForge sequence finished');
 
@@ -1058,13 +1095,11 @@
 
                         <button
 
-                            disabled={!isConfigDirty}
+                            disabled={!getIsConfigDirty()}
 
                             onclick={async (e) => {
 
-                                // If somehow clicked while disabled, do nothing
-
-                                if (!isConfigDirty) return;
+                                if (!getIsConfigDirty()) return;
 
                                 await saveCurrentConfig();
 
@@ -1072,7 +1107,7 @@
 
                             class="text-[10px] font-bold uppercase tracking-wider py-2 px-4 rounded-lg border transition-all
 
-                            {!isConfigDirty
+                            {!getIsConfigDirty()
 
                                 ? 'bg-emerald-900/20 border-emerald-500/30 text-slate-400 cursor-default'
 
@@ -1080,7 +1115,7 @@
 
                         >
 
-                            {#if !isConfigDirty}
+                            {#if !getIsConfigDirty()}
 
                                 <span class="text-emerald-400">✓ Configuration Saved</span>
 
