@@ -601,7 +601,10 @@ export async function processFiles(config: ProcessConfig): Promise<ProcessResult
         // ADDED: '.godot' to massive folders list
         const massiveFolders = new Set<string>(['node_modules', '.git', '.godot', '.svelte-kit', '.next', 'dist', 'build', 'vendor']); // Explicit massive folders
 
-        const activeTemplates = templates.filter(t => config.templateIds.includes(t.id));
+        // Fix: Ensure templateIds is an array before filtering
+        const safeTemplateIds = Array.isArray(config.templateIds) ? config.templateIds : [];
+        const activeTemplates = templates.filter(t => safeTemplateIds.includes(t.id));
+        
         activeTemplates.forEach(t => t.ignores.forEach(ign => ignorePatterns.add(ign.replace(/\/$/, ''))));
 
         // 2. Determine Content Files

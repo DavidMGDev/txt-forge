@@ -47,7 +47,10 @@ export function saveConfig(data) {
 export function loadProjectConfig(projectPath) {
     try {
         if (fs.existsSync(PROJECTS_FILE)) {
-            const data = JSON.parse(fs.readFileSync(PROJECTS_FILE, 'utf-8'));
+            const content = fs.readFileSync(PROJECTS_FILE, 'utf-8');
+            if (!content.trim()) return { config: null, wasReset: false }; // Handle empty file case
+            
+            const data = JSON.parse(content);
             const normalizedPath = path.resolve(projectPath);
             const entry = data[normalizedPath];
 

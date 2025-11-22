@@ -18,11 +18,16 @@ export async function POST({ request }) {
     const detection = await detectCodebase(cwd);
 
     // Load Project Config
-    const projectConfig = loadProjectConfig(cwd);
+    const { config: projectConfig } = loadProjectConfig(cwd);
 
-    // Determine settings based on config (if exists)
-    const templatesToUse = projectConfig ? projectConfig.templateIds : detection.ids;
-    const selectedFilesToUse = projectConfig ? projectConfig.selectedFiles : undefined;
+    // Determine settings based on config (if exists AND has specific data), otherwise fallback to detection
+    const templatesToUse = (projectConfig && projectConfig.templateIds && projectConfig.templateIds.length > 0) 
+        ? projectConfig.templateIds 
+        : detection.ids;
+        
+    const selectedFilesToUse = (projectConfig && projectConfig.selectedFiles) 
+        ? projectConfig.selectedFiles 
+        : undefined;
 
     // CLI flag overrides config if explicitly passed (logic: if hideIgnoredInTree is true from CLI, use it, else check config)
 
