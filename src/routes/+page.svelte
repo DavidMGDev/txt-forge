@@ -468,7 +468,7 @@
             const data = await res.json();
             
             if (data.success && data.path) {
-                // 2. Trigger Switch (Updates server internal CWD)
+                // 2. Trigger Switch (Launches new CMD window in background)
                 const switchRes = await fetch('/api/switch-dir', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -476,8 +476,10 @@
                 });
                 
                 if (switchRes.ok) {
-                    // 3. Reload page to re-run detection on new folder
-                    window.location.reload();
+                    // 3. Close THIS session immediately.
+                    // The new CMD window is waiting 3 seconds, then it will start.
+                    // This prevents port conflicts and cleans up the UI.
+                    await exitApp();
                 } else {
                     alert('Failed to switch directory.');
                     isProcessing = false;
