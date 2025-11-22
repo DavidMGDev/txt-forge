@@ -229,44 +229,48 @@ export function relaunchInNewWindow(targetPath) {
     
     let cmd = '';
     let args = [];
+    let options = {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: false // Default false for Linux/Mac
+    };
 
     if (process.platform === 'win32') {
-        // Windows:
-        // 1. start "TXT-Forge": Opens new window
-        // 2. timeout /t 3: Waits 3s for current process to release port 4567
-        // 3. cd /d: Changes directory
-        // 4. txt-forge: Starts new instance
+        // Windows Fixes:
+        // 1. Increase timeout to 5 seconds to prevent port conflict crashing.
+        // 2. Use windowsVerbatimArguments + manual quoting to handle paths with spaces correctly.
+        // 3. Use windowsHide: true to prevent the "Second Console" (the launcher) from flashing.
+        
         cmd = 'cmd.exe';
-        args = ['/c', 'start', 'TXT-Forge', 'cmd.exe', '/k', `echo Switching to ${absPath}... & timeout /t 3 & cd /d "${absPath}" & txt-forge`];
+        
+        // Inner command: The actual work in the new window
+        // /nobreak prevents user keystrokes from skipping the wait
+        const innerCmd = `echo Switching to New Folder... & timeout /t 5 /nobreak & cd /d "${absPath}" & txt-forge`;
+        
+        // Outer command: Starts the new window
+        // cmd /c start "Title" cmd /k "..."
+        // We quote the title and the inner command explicitly.
+        args = ['/c', 'start', '"TXT-Forge"', 'cmd', '/k', `"${innerCmd}"`];
+        
+        options.windowsVerbatimArguments = true;
+        options.windowsHide = true; // <--- This fixes the "Two Consoles" issue
     } 
     else if (process.platform === 'darwin') {
-        // macOS (AppleScript):
-        // Tells Terminal app to do script
+        // macOS (AppleScript)
         cmd = 'osascript';
         const script = `tell application "Terminal" to do script "echo Switching...; sleep 3; cd \\"${absPath}\\"; txt-forge"`;
         args = ['-e', script];
     } 
     else if (process.platform === 'linux') {
-        // Linux: Try common terminal emulators
-        // We wrap the command in 'bash -c' to handle the sleep and execution chain
+        // Linux (GNOME Terminal fallback)
         const bashCmd = `echo Switching...; sleep 3; cd "${absPath}"; txt-forge; exec bash`;
         
-        // Try GNOME Terminal
         cmd = 'gnome-terminal';
         args = ['--', 'bash', '-c', bashCmd];
-        
-        // Fallback detection could be added here (xterm, konsole, etc), 
-        // but gnome-terminal is a safe default for Ubuntu/Debian.
     }
 
-    // CRITICAL: Detach the process so it survives when this Node process exits
     if (cmd) {
-        const subprocess = spawn(cmd, args, {
-            detached: true,
-            stdio: 'ignore',
-            windowsVerbatimArguments: process.platform === 'win32' // Required for Windows quotes
-        });
-        
+        const subprocess = spawn(cmd, args, options);
         subprocess.unref();
     }
 }
