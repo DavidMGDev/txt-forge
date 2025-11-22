@@ -119,9 +119,20 @@ async function startServer() {
                 if (result.success) {
                     console.log('\x1b[32m%s\x1b[0m', '✓ Auto-Forge Complete!');
 
-                    // Gitignore Warning
+                    // 1. Gitignore Warning
                     if (result.gitIgnoreModified) {
                         console.log('\x1b[33m%s\x1b[0m', '⚠ Note: Added "TXT-Forge/" to your .gitignore file.');
+                    }
+
+                    // 2. Config Reset Warning
+                    if (result.configWasReset) {
+                        console.log('\x1b[33m%s\x1b[0m', '⚠ Warning: Your project configuration was reset due to a version update.');
+                    }
+
+                    // 3. Update Available Warning
+                    if (result.updateInfo && result.updateInfo.isUpdateAvailable) {
+                         console.log('\x1b[35m%s\x1b[0m', `➜ Update Available: ${result.updateInfo.latest} (Current: ${result.updateInfo.current})`);
+                         console.log('\x1b[90m%s\x1b[0m', '  Run "npm install -g txt-forge" to update.');
                     }
 
                     console.log('\x1b[90m%s\x1b[0m', `  Detected: ${result.detectedIds.join(', ') || 'None'}`);
@@ -129,7 +140,6 @@ async function startServer() {
                     console.log('\x1b[90m%s\x1b[0m', `  Generated ${result.files.length} file(s).`);
 
                     // Open the folder automatically
-                    // FIX: Ensure we wait for the OS command, and handle errors gracefully
                     try {
                         await open(result.outputPath);
                     } catch (openErr) {
@@ -155,7 +165,7 @@ async function startServer() {
             }
         } else {
             // --- UI MODE LOGIC ---
-            console.log('\x1b[32m%s\x1b[0m', `✓ Ready. Opening ${url}`);
+            console.log('\x1b[32m%s\x1b[0m', '✓ Ready. Opening browser...');
             console.log('\x1b[90m%s\x1b[0m', '  (Press Ctrl+C to exit manually)');
             await open(url);
         }

@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { detectCodebase } from '$lib/processor';
-import { loadConfig, loadProjectConfig } from '$lib/server/sys-utils'; // <--- UPDATED
+import { loadConfig, loadProjectConfig, checkForUpdate } from '$lib/server/sys-utils';
 import os from 'os';
 import path from 'path';
 
@@ -13,9 +13,15 @@ export async function GET() {
 
     // 2. Load User Config
     const config = loadConfig();
-    const { config: projectConfig, wasReset } = loadProjectConfig(cwd); // <--- UPDATED: Destructure result
+    const { config: projectConfig, wasReset } = loadProjectConfig(cwd);
 
-    // 3. Calculate Global Vault Path for display
+    // 3. Check for updates (Non-blocking ideal, but for simplicity we await fast)
+    const updateInfo = await checkForUpdate();
+    const shouldShowUpdate = updateInfo && 
+                             updateInfo.isUpdateAvailable && 
+                             config.lastSkippedVersion !== updateInfo.latest;
+
+    // 4. Calculate Global Vault Path for display
     const globalPath = path.join(os.homedir(), '.txt-forge-vault');
 
     return json({
@@ -25,7 +31,9 @@ export async function GET() {
         savedCustomPath: config.lastCustomPath || '',
         globalVaultPath: globalPath,
         projectConfig,
-        configWasReset: wasReset, // <--- NEW: Inform frontend
+        configWasReset: wasReset,
+        updateInfo,
+        shouldShowUpdate,
         // DEBUG: Pass the env flag to the frontend
         isDebug: process.env.TXT_FORGE_DEBUG === 'true'
     });

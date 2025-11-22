@@ -1,15 +1,14 @@
 import { json } from '@sveltejs/kit';
 import { detectCodebase, processFiles } from '$lib/processor';
-import { loadProjectConfig } from '$lib/server/sys-utils'; // <--- NEW
+import { loadProjectConfig, checkForUpdate } from '$lib/server/sys-utils';
 
 export async function POST({ request }) {
     const { saveToVault, hideIgnoredInTree, customPath } = await request.json();
 
-    // 1. Determine Working Directory (Inherited from CLI env var)
+    // 1. Determine Working Directory
     const cwd = process.env.TXT_FORGE_CWD || process.cwd();
 
     // 2. Determine Save Mode
-    // Custom takes precedence -> then Vault -> then Root (default)
     let saveMode: 'custom' | 'global' | 'root' = 'root';
     if (customPath) saveMode = 'custom';
     else if (saveToVault) saveMode = 'global';
@@ -17,8 +16,9 @@ export async function POST({ request }) {
     // 3. Run Auto-Detection
     const detection = await detectCodebase(cwd);
 
-    // Load Project Config
-    const { config: projectConfig } = loadProjectConfig(cwd);
+    // 4. Load Config & Check Reset & Check Updates
+    const { config: projectConfig, wasReset } = loadProjectConfig(cwd);
+    const updateInfo = await checkForUpdate();
 
     // Determine settings based on config (if exists AND has specific data), otherwise fallback to detection
     const templatesToUse = (projectConfig && projectConfig.templateIds && projectConfig.templateIds.length > 0) 
@@ -65,6 +65,8 @@ export async function POST({ request }) {
 
     return json({
         ...result,
-        detectedIds: detection.ids
+        detectedIds: detection.ids,
+        configWasReset: wasReset,
+        updateInfo
     });
 }

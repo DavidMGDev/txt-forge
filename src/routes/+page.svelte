@@ -135,7 +135,11 @@
 
     let showErrorDialog = $state(false);
 
-    let showVersionResetDialog = $state(false); // <--- NEW
+    let showVersionResetDialog = $state(false);
+
+    let showUpdateDialog = $state(false); // <--- NEW
+    let updateInfo: any = $state(null); // <--- NEW
+    let isUpdating = $state(false); // <--- NEW
 
     let dialogTitle = $state('');
 
@@ -247,11 +251,14 @@
             isDebug = data.isDebug; 
 
             // NEW: Check for Version Reset
-
             if (data.configWasReset) {
-
                 showVersionResetDialog = true;
+            }
 
+            // NEW: Check for Update
+            if (data.shouldShowUpdate) {
+                updateInfo = data.updateInfo;
+                showUpdateDialog = true;
             }
 
             logUI('Debug mode active. Session:', sessionId);
@@ -409,6 +416,36 @@
 
         // We DO NOT replace the HTML body, preventing the "jumpscare".
 
+    }
+
+    async function handleAutoUpdate() {
+        isUpdating = true;
+        try {
+            const res = await fetch('/api/update', { method: 'POST' });
+            const data = await res.json();
+            
+            if (data.success) {
+                alert('Update Successful! Please close this window and restart txt-forge from your terminal.');
+                await exitApp();
+            } else {
+                alert('Auto-update failed. Please run: npm install -g txt-forge');
+                showUpdateDialog = false;
+            }
+        } catch (e) {
+            alert('Auto-update failed. Please run: npm install -g txt-forge');
+        } finally {
+            isUpdating = false;
+        }
+    }
+
+    async function handleSkipUpdate() {
+        if (!updateInfo) return;
+        showUpdateDialog = false;
+        await fetch('/api/skip-update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ version: updateInfo.latest })
+        });
     }
 
     // Update: Add showOverlay parameter with default 'true'
@@ -1203,6 +1240,55 @@
 
         </div>
 
+    {/if}
+
+    <!-- UPDATE DIALOG -->
+    {#if showUpdateDialog && !isShuttingDown && !showVersionResetDialog}
+        <div class="fixed inset-0 z-[110] flex items-center justify-center bg-black/90 backdrop-blur-sm" transition:fade>
+            <div class="bg-slate-950 border border-indigo-500/30 rounded-3xl p-8 w-full max-w-md shadow-[0_0_50px_rgba(99,102,241,0.15)] relative flex flex-col items-center text-center animate-fade-in-up">
+                <div class="w-16 h-16 bg-indigo-900/20 rounded-full flex items-center justify-center mb-5 border border-indigo-500/20">
+                    <span class="text-3xl animate-bounce">🚀</span>
+                </div>
+                <h3 class="text-2xl font-bold text-white mb-2">Update Available</h3>
+                <p class="text-slate-400 mb-6 text-sm">
+                    A new version of TXT-Forge is available!
+                    <br>
+                    <span class="font-mono text-indigo-400 bg-indigo-950/30 px-2 py-0.5 rounded mt-2 inline-block border border-indigo-500/20">v{updateInfo?.latest}</span>
+                </p>
+                
+                <div class="flex flex-col gap-3 w-full">
+                    <button 
+                        onclick={handleAutoUpdate}
+                        disabled={isUpdating}
+                        class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition-all shadow-lg shadow-indigo-900/20 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        {#if isUpdating}
+                            <svg class="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                            Installing...
+                        {:else}
+                            Update Automatically
+                        {/if}
+                    </button>
+                    
+                    <div class="relative flex py-2 items-center">
+                        <div class="flex-grow border-t border-slate-800"></div>
+                        <span class="flex-shrink-0 mx-4 text-slate-600 text-[10px] uppercase font-bold">OR</span>
+                        <div class="flex-grow border-t border-slate-800"></div>
+                    </div>
+
+                    <code class="text-[10px] bg-black p-3 rounded border border-slate-800 text-slate-500 font-mono select-all">npm install -g txt-forge</code>
+
+                    <div class="flex gap-3 mt-2">
+                         <button onclick={() => showUpdateDialog = false} class="flex-1 py-2 bg-slate-900 hover:bg-slate-800 text-slate-400 text-xs font-bold rounded-lg transition-colors">
+                            Remind Me Later
+                        </button>
+                        <button onclick={handleSkipUpdate} class="flex-1 py-2 bg-transparent hover:bg-slate-900 text-slate-500 hover:text-slate-300 text-xs font-bold rounded-lg transition-colors">
+                            Skip v{updateInfo?.latest}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
     {/if}
 
     <!-- VERSION RESET DIALOG -->

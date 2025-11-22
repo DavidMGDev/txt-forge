@@ -1,8 +1,9 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { spawn } from 'child_process';
+import { spawn, exec } from 'child_process'; // Added exec
 import { fileURLToPath } from 'url';
+import https from 'https'; // Added https
 
 // Resolve package.json to get the Source of Truth version
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -12,6 +13,8 @@ try {
     const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
     APP_VERSION = pkg.version;
 } catch (e) { console.error("Could not read app version"); }
+
+export { APP_VERSION }; // Export for use in other files
 
 const CONFIG_DIR = path.join(os.homedir(), '.txt-forge');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
@@ -149,6 +152,51 @@ export async function pickDirectory() {
             } else {
                 resolve(null);
             }
+        });
+    });
+}
+
+// --- UPDATE UTILS ---
+
+export async function checkForUpdate() {
+    return new Promise((resolve) => {
+        const req = https.get('https://registry.npmjs.org/txt-forge/latest', {
+            headers: { 'User-Agent': 'txt-forge-cli' }
+        }, (res) => {
+            let data = '';
+            res.on('data', (chunk) => data += chunk);
+            res.on('end', () => {
+                try {
+                    const json = JSON.parse(data);
+                    const latest = json.version;
+                    resolve({
+                        current: APP_VERSION,
+                        latest: latest,
+                        isUpdateAvailable: latest !== APP_VERSION
+                    });
+                } catch (e) { resolve(null); }
+            });
+        });
+        req.setTimeout(3000, () => {
+            req.destroy();
+            resolve(null);
+        });
+        req.on('error', () => resolve(null));
+    });
+}
+
+export async function performGlobalUpdate() {
+    return new Promise((resolve, reject) => {
+        const cmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+        // Attempt to install globally. note: on Linux/Mac this might fail without sudo,
+        // but we can try.
+        exec(`${cmd} install -g txt-forge@latest`, (error, stdout, stderr) => {
+            if (error) {
+                console.error(`Update error: ${error}`);
+                reject(error);
+                return;
+            }
+            resolve(true);
         });
     });
 }
