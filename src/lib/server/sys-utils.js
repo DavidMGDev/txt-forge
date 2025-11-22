@@ -217,3 +217,27 @@ export async function performGlobalUpdate() {
     });
 }
 
+// --- WINDOWS LAUNCHER ---
+
+export function relaunchInNewWindow(targetPath) {
+    // Resolve absolute path to ensure CD works correctly
+    const absPath = path.resolve(targetPath);
+
+    if (process.platform === 'win32') {
+        // Windows Command Explanation:
+        // 1. start "TXT-Forge": Opens a new independent CMD window with title "TXT-Forge"
+        // 2. cmd.exe /k: Runs the following commands and keeps window open
+        // 3. echo ...: Inform user
+        // 4. timeout /t 2: Wait 2 seconds. This allows the OLD process to shutdown gracefully via the UI before the NEW one starts.
+        // 5. cd /d ...: Change directory (handling drive letters)
+        // 6. txt-forge: Run the CLI
+        const command = `start "TXT-Forge" cmd.exe /k "echo Switching to ${absPath}... & timeout /t 2 >nul & cd /d "${absPath}" & txt-forge"`;
+        
+        exec(command, (err) => {
+            if (err) console.error("Failed to launch new window:", err);
+        });
+    } else {
+        console.log("Auto-relaunch is currently optimized for Windows. Please run 'txt-forge' in the new directory manually.");
+    }
+}
+

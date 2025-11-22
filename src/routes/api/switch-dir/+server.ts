@@ -1,16 +1,15 @@
 import { json } from '@sveltejs/kit';
-import { setCwd } from '$lib/server/sys-utils';
+import { relaunchInNewWindow } from '$lib/server/sys-utils';
 
 export async function POST({ request }) {
     try {
         const { path } = await request.json();
         if (!path) return json({ success: false, message: "No path provided" });
 
-        // Only change the internal state variable.
-        const success = setCwd(path);
-        if (!success) return json({ success: false, message: "Invalid directory" });
+        // Launch the new CMD window (it has a 2s delay built-in)
+        relaunchInNewWindow(path);
         
-        // Return success. Frontend will reload the page, hitting api/detect which reads the new CWD.
+        // Return success immediately so Frontend can close the window
         return json({ success: true });
     } catch (e: any) {
         return json({ success: false, message: e.message }, { status: 500 });

@@ -468,7 +468,7 @@
             const data = await res.json();
             
             if (data.success && data.path) {
-                // 2. Tell server to change CWD variable
+                // 2. Trigger Switch (Launches new CMD window)
                 const switchRes = await fetch('/api/switch-dir', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -476,10 +476,10 @@
                 });
                 
                 if (switchRes.ok) {
-                    // 3. Reload the page. This triggers onMount -> api/detect again.
-                    // Since api/detect reads 'getCwd()', it will see the new path.
-                    // This is effectively a "Fresh Launch" in the same tab.
-                    window.location.reload();
+                    // 3. Close THIS session immediately.
+                    // The new CMD window is waiting 2 seconds, then it will start.
+                    // This prevents port conflicts and cleans up the UI.
+                    await exitApp();
                 } else {
                     alert('Failed to switch directory.');
                     isProcessing = false;
