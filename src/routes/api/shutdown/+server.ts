@@ -1,4 +1,5 @@
 import { json } from '@sveltejs/kit';
+import { triggerShutdown } from '$lib/server/sys-utils';
 
 export async function POST({ request }) {
     let body = {};
@@ -6,14 +7,13 @@ export async function POST({ request }) {
 
     const currentSessionId = process.env.FORGE_SESSION_ID;
     if (body.sessionId !== currentSessionId) {
-        // Silent return for stale tabs
         return json({ success: false });
     }
 
-    console.log('\n\x1b[32m%s\x1b[0m', '✓ Session finished. Thanks for using TXT-Forge.');
-
-    setTimeout(() => {
-        process.exit(0);
-    }, 100);
+    console.log('\n\x1b[32m%s\x1b[0m', '✓ Session finished via UI.');
+    
+    // Signal parent to stop the loop
+    triggerShutdown();
+    
     return json({ success: true });
 }

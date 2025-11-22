@@ -450,11 +450,18 @@
     }
 
     async function performRestart() {
-        // Trigger backend restart. The backend will kill the process.
+        // 1. Tell backend to restart
         await fetch('/api/restart', { method: 'POST' });
-        // We don't need to close the window manually; the browser will disconnect.
-        // But we can show a "Reconnecting..." state if we wanted, though the new instance opens a new tab.
-        // We'll just let the request fire.
+        
+        // 2. Show a temporary loading state or keep the "Update Complete" dialog
+        // The server kills itself immediately.
+        
+        // 3. Wait and Reload
+        // We wait ~3 seconds for the CLI to kill the process and spawn the new one.
+        // Then we reload the page.
+        setTimeout(() => {
+            window.location.reload();
+        }, 3000);
     }
 
     async function handleSkipUpdate() {
@@ -475,25 +482,26 @@
             const data = await res.json();
             
             if (data.success && data.path) {
-                // 2. Switch Directory
-                const switchRes = await fetch('/api/switch-dir', {
+                // 2. Trigger Switch
+                await fetch('/api/switch-dir', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ path: data.path })
                 });
                 
-                if (switchRes.ok) {
-                    // The backend is restarting. We can just wait or show a loader.
-                    // The new instance will open a NEW tab automatically via CLI logic.
-                    // So we can just let this tab die or close it.
-                    window.close();
-                }
+                // Show loading state (the processing spinner is already active)
+                // Wait for server bounce, then reload. 
+                // Since the port is the same (4567), a reload connects to the NEW instance.
+                setTimeout(() => {
+                    window.location.reload();
+                }, 3000);
             }
         } catch (err) {
             console.error(err);
-        } finally {
             isProcessing = false;
         }
+        // Note: We don't set isProcessing = false in success case, 
+        // because we want the spinner to stay until reload.
     }
 
     // Update: Add showOverlay parameter with default 'true'
