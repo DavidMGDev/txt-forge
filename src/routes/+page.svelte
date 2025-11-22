@@ -142,9 +142,10 @@
 
     let showVersionResetDialog = $state(false);
 
-    let showUpdateDialog = $state(false); // <--- NEW
-    let updateInfo: any = $state(null); // <--- NEW
-    let isUpdating = $state(false); // <--- NEW
+    let showUpdateDialog = $state(false);
+    let showUpdateSuccessDialog = $state(false); // <--- NEW
+    let updateInfo: any = $state(null);
+    let isUpdating = $state(false);
 
     let dialogTitle = $state('');
 
@@ -434,8 +435,9 @@
             const data = await res.json();
             
             if (data.success) {
-                // REMOVED ALERT. Just exit.
-                await exitApp();
+                // Close update modal, show success modal
+                showUpdateDialog = false;
+                showUpdateSuccessDialog = true;
             } else {
                 alert('Auto-update failed. Please run: npm install -g txt-forge');
                 showUpdateDialog = false;
@@ -445,6 +447,14 @@
         } finally {
             isUpdating = false;
         }
+    }
+
+    async function performRestart() {
+        // Trigger backend restart. The backend will kill the process.
+        await fetch('/api/restart', { method: 'POST' });
+        // We don't need to close the window manually; the browser will disconnect.
+        // But we can show a "Reconnecting..." state if we wanted, though the new instance opens a new tab.
+        // We'll just let the request fire.
     }
 
     async function handleSkipUpdate() {
@@ -473,8 +483,10 @@
                 });
                 
                 if (switchRes.ok) {
-                    // Reload page to trigger fresh detect on new CWD
-                    window.location.reload();
+                    // The backend is restarting. We can just wait or show a loader.
+                    // The new instance will open a NEW tab automatically via CLI logic.
+                    // So we can just let this tab die or close it.
+                    window.close();
                 }
             }
         } catch (err) {
@@ -1331,6 +1343,26 @@
         </div>
     {/if}
 
+    <!-- UPDATE SUCCESS DIALOG -->
+    {#if showUpdateSuccessDialog}
+        <div class="fixed inset-0 z-[120] flex items-center justify-center bg-black/90 backdrop-blur-md" transition:fade>
+            <div class="bg-[#0a0a0a] border border-indigo-500/30 rounded-3xl p-10 w-full max-w-md shadow-[0_0_50px_rgba(99,102,241,0.2)] relative flex flex-col items-center text-center animate-fade-in-up">
+                <div class="w-24 h-24 bg-indigo-900/20 rounded-full flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(99,102,241,0.15)] border border-indigo-500/20">
+                    <span class="text-4xl">🎉</span>
+                </div>
+                <h3 class="text-2xl font-black text-white mb-3 tracking-tight">Update Complete</h3>
+                <p class="text-slate-400 mb-8 leading-relaxed text-sm">
+                    TXT-Forge has been successfully updated to <span class="text-indigo-400 font-mono">v{updateInfo?.latest}</span>.
+                    <br>Restart now to apply changes.
+                </p>
+                <button onclick={performRestart} class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 hover:scale-[1.02]">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                    <span>Restart TXT-Forge</span>
+                </button>
+            </div>
+        </div>
+    {/if}
+
     <!-- VERSION RESET DIALOG -->
 
     {#if showVersionResetDialog && !isShuttingDown}
@@ -1396,7 +1428,8 @@
             <button 
                 onclick={handleSwitchDirectory}
                 disabled={isProcessing}
-                class="px-4 py-1.5 bg-white/5 hover:bg-orange-500/10 border border-white/10 hover:border-orange-500/30 text-[10px] font-bold uppercase tracking-wider text-slate-400 hover:text-orange-300 rounded-lg transition-all flex items-center gap-2"
+                class="px-4 py-1 bg-white/5 hover:bg-orange-500/10 border border-white/10 hover:border-orange-500/30 text-[10px] font-bold uppercase tracking-wider text-slate-400 hover:text-orange-300 rounded flex items-center gap-2 h-8 transition-all"
+                title="Switch Folder"
             >
                 <span>Browse</span>
                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
@@ -1854,9 +1887,9 @@
                 
                 <!-- SUMMARY TEXT (Visible when closed) -->
 
-                {#if !settingsOpen}
+                <div class="grid transition-[grid-template-rows] duration-300 ease-out {!settingsOpen ? 'grid-rows-[1fr] mt-3' : 'grid-rows-[0fr] mt-0'}">
 
-                    <div class="mt-3" transition:fade={{ duration: 200 }}>
+                    <div class="overflow-hidden min-h-0">
 
                         <div class="text-[11px] text-slate-500 font-medium leading-relaxed">
 
@@ -1874,7 +1907,7 @@
 
                     </div>
 
-                {/if}
+                </div>
 
             </div>
 

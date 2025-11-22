@@ -276,3 +276,41 @@ export async function launchNewInstance(targetPath) {
     child.unref(); // Allow parent to stop waiting for this child
     return port;
 }
+
+export async function restartApp(targetPath = null) {
+    const cwd = targetPath || getCwd();
+    
+    // 1. Find CLI Path (Reusing logic from launchNewInstance)
+    let rootDir = __dirname;
+    let cliPath = '';
+    for (let i = 0; i < 5; i++) {
+        if (fs.existsSync(path.join(rootDir, 'package.json'))) {
+            cliPath = path.join(rootDir, 'bin', 'cli.js');
+            break;
+        }
+        rootDir = path.dirname(rootDir);
+    }
+
+    if (!cliPath || !fs.existsSync(cliPath)) {
+        throw new Error('Could not locate CLI entry point.');
+    }
+
+    // 2. Spawn the new process inheriting the current terminal
+    // This makes it take over the current CMD/PowerShell window
+    const child = spawn(process.execPath, [cliPath], {
+        detached: false, 
+        stdio: 'inherit', // <--- Key: Take over the TTY
+        cwd: cwd,
+        env: {
+            ...process.env,
+            // Ensure we don't carry over the old port if it was set, allow CLI to pick default or random
+            PORT: undefined, 
+            TXT_FORGE_CWD: cwd 
+        }
+    });
+
+    // 3. Exit the current process gracefully to let the new one take over
+    child.on('spawn', () => {
+        setTimeout(() => process.exit(0), 100); // Small delay to ensure handoff
+    });
+}
