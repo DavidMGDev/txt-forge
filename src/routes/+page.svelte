@@ -468,7 +468,7 @@
             const data = await res.json();
             
             if (data.success && data.path) {
-                // 2. Trigger Switch (Launches new CMD window)
+                // 2. Trigger Switch (Updates server internal CWD)
                 const switchRes = await fetch('/api/switch-dir', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -476,10 +476,8 @@
                 });
                 
                 if (switchRes.ok) {
-                    // 3. Close THIS session immediately.
-                    // The new CMD window is waiting 2 seconds, then it will start.
-                    // This prevents port conflicts and cleans up the UI.
-                    await exitApp();
+                    // 3. Reload page to re-run detection on new folder
+                    window.location.reload();
                 } else {
                     alert('Failed to switch directory.');
                     isProcessing = false;
@@ -1828,9 +1826,9 @@
 
                             <div class="flex flex-col">
 
-                                <span class="text-[10px] font-bold text-slate-300 uppercase tracking-wider">Merge All Files</span>
+                                <span class="text-[10px] font-bold text-slate-300 uppercase tracking-wider">Single File Mode</span>
 
-                                <span class="text-[9px] text-slate-500">One single .txt file, no index.</span>
+                                <span class="text-[9px] text-slate-500">Tree and files merged into one .txt file.</span>
 
                             </div>
 
@@ -1894,7 +1892,7 @@
 
                             {#if disableSplitting}
 
-                                <span class="text-orange-400">Merging all files</span> into one single output.
+                                <span class="text-orange-400">Single File Mode</span> active.
 
                             {:else}
 

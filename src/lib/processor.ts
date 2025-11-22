@@ -706,11 +706,16 @@ export async function processFiles(config: ProcessConfig): Promise<ProcessResult
         const indentedBody = treeBody.split('\n').map(line => '│   ' + line).join('\n');
         const finalTreeContent = `repository/\n${indentedBody}`;
 
-        await fs.writeFile(path.join(mergedDir, 'Source-Tree.txt'), finalTreeContent, 'utf-8');
-
-        const generatedFiles = await mergeFiles(fileMap, mergedDir, config.maxChars, config.disableSplitting);
-
-        generatedFiles.unshift('Source-Tree.txt');
+        let generatedFiles: string[] = [];
+        if (config.disableSplitting) {
+            // Single File Mode: Pass tree content, do NOT write separate file
+            generatedFiles = await mergeFiles(fileMap, mergedDir, config.maxChars, true, finalTreeContent);
+        } else {
+            // Normal Mode: Write separate tree file
+            await fs.writeFile(path.join(mergedDir, 'Source-Tree.txt'), finalTreeContent, 'utf-8');
+            generatedFiles = await mergeFiles(fileMap, mergedDir, config.maxChars, false);
+            generatedFiles.unshift('Source-Tree.txt');
+        }
 
         return {
             success: true,
@@ -831,7 +836,8 @@ async function mergeFiles(
     files: { relPath: string, content: string }[],
     outputDir: string,
     maxChars: number,
-    disableSplitting: boolean = false
+    disableSplitting: boolean = false,
+    treeContent: string = "" // <--- NEW PARAMETER
 ): Promise<string[]> {
 
     const createdFiles: string[] = [];
@@ -841,9 +847,13 @@ async function mergeFiles(
     if (disableSplitting) {
         const filename = `Source-1 (Full Context).txt`;
 
-        // Just merge everything linearly. No Index header needed as per request.
-        // We just separate files with headers.
+        // Start with the Tree content if provided
         let fullContent = "";
+        if (treeContent) {
+            fullContent += "--- PROJECT STRUCTURE ---\n";
+            fullContent += treeContent;
+            fullContent += "\n" + "=".repeat(50) + "\n\n";
+        }
         
         // Sort files by path for consistency
         files.sort((a, b) => a.relPath.localeCompare(b.relPath));

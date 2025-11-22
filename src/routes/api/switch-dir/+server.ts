@@ -1,16 +1,20 @@
 import { json } from '@sveltejs/kit';
-import { relaunchInNewWindow } from '$lib/server/sys-utils';
+import { setCwd } from '$lib/server/sys-utils';
 
 export async function POST({ request }) {
     try {
         const { path } = await request.json();
         if (!path) return json({ success: false, message: "No path provided" });
 
-        // Launch the new CMD window (it has a 2s delay built-in)
-        relaunchInNewWindow(path);
+        // Cross-Platform: Update internal state immediately.
+        // The frontend will reload the page, triggering a new detection on the new CWD.
+        const success = setCwd(path);
         
-        // Return success immediately so Frontend can close the window
-        return json({ success: true });
+        if (success) {
+            return json({ success: true });
+        } else {
+            return json({ success: false, message: "Directory does not exist" }, { status: 400 });
+        }
     } catch (e: any) {
         return json({ success: false, message: e.message }, { status: 500 });
     }

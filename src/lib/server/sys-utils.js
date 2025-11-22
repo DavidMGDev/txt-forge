@@ -203,13 +203,18 @@ export async function checkForUpdate() {
 
 export async function performGlobalUpdate() {
     return new Promise((resolve, reject) => {
-        const cmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-        // Attempt to install globally. note: on Linux/Mac this might fail without sudo,
-        // but we can try.
+        const isWin = process.platform === 'win32';
+        const cmd = isWin ? 'npm.cmd' : 'npm';
+        
         exec(`${cmd} install -g txt-forge@latest`, (error, stdout, stderr) => {
             if (error) {
                 console.error(`Update error: ${error}`);
-                reject(error);
+                // Enhance error message for Linux/Mac users regarding permissions
+                if (!isWin && (error.message.includes('EACCES') || error.message.includes('permission denied'))) {
+                    reject(new Error("Permission denied. Please run: sudo npm install -g txt-forge@latest"));
+                } else {
+                    reject(error);
+                }
                 return;
             }
             resolve(true);
@@ -218,26 +223,7 @@ export async function performGlobalUpdate() {
 }
 
 // --- WINDOWS LAUNCHER ---
-
-export function relaunchInNewWindow(targetPath) {
-    // Resolve absolute path to ensure CD works correctly
-    const absPath = path.resolve(targetPath);
-
-    if (process.platform === 'win32') {
-        // Windows Command Explanation:
-        // 1. start "TXT-Forge": Opens a new independent CMD window with title "TXT-Forge"
-        // 2. cmd.exe /k: Runs the following commands and keeps window open
-        // 3. echo ...: Inform user
-        // 4. timeout /t 2: Wait 2 seconds. This allows the OLD process to shutdown gracefully via the UI before the NEW one starts.
-        // 5. cd /d ...: Change directory (handling drive letters)
-        // 6. txt-forge: Run the CLI
-        const command = `start "TXT-Forge" cmd.exe /k "echo Switching to ${absPath}... & timeout /t 2 >nul & cd /d "${absPath}" & txt-forge"`;
-        
-        exec(command, (err) => {
-            if (err) console.error("Failed to launch new window:", err);
-        });
-    } else {
-        console.log("Auto-relaunch is currently optimized for Windows. Please run 'txt-forge' in the new directory manually.");
-    }
-}
+// REMOVED: relaunchInNewWindow
+// We now handle directory switching internally via setCwd state management
+// which works on Linux, Mac, and Windows without spawning new shells.
 
