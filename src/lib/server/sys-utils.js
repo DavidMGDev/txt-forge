@@ -2,6 +2,16 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { spawn } from 'child_process';
+import { fileURLToPath } from 'url';
+
+// Resolve package.json to get the Source of Truth version
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const pkgPath = path.resolve(__dirname, '../../../package.json');
+let APP_VERSION = '0.0.0';
+try {
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+    APP_VERSION = pkg.version;
+} catch (e) { console.error("Could not read app version"); }
 
 const CONFIG_DIR = path.join(os.homedir(), '.txt-forge');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
@@ -38,14 +48,25 @@ export function loadProjectConfig(projectPath) {
     try {
         if (fs.existsSync(PROJECTS_FILE)) {
             const data = JSON.parse(fs.readFileSync(PROJECTS_FILE, 'utf-8'));
-            // Normalize path to ensure consistency
             const normalizedPath = path.resolve(projectPath);
-            return data[normalizedPath] || null;
+            const entry = data[normalizedPath];
+
+            if (entry) {
+                // Version Check
+                if (entry.appVersion !== APP_VERSION) {
+                    // Mismatch: Erase this specific config
+                    delete data[normalizedPath];
+                    fs.writeFileSync(PROJECTS_FILE, JSON.stringify(data, null, 2));
+                    // Return special object to signal reset
+                    return { config: null, wasReset: true, oldVersion: entry.appVersion };
+                }
+                return { config: entry, wasReset: false };
+            }
         }
     } catch (e) {
         console.error("Failed to load project config", e);
     }
-    return null;
+    return { config: null, wasReset: false };
 }
 
 export function saveProjectConfig(projectPath, config) {
@@ -60,7 +81,8 @@ export function saveProjectConfig(projectPath, config) {
         // This ensures no stale properties remain if the user changed structure.
         data[normalizedPath] = {
             ...config,
-            lastUpdated: new Date().toISOString() // Optional: Helps debugging
+            appVersion: APP_VERSION, // Save current version
+            lastUpdated: new Date().toISOString()
         };
 
         fs.writeFileSync(PROJECTS_FILE, JSON.stringify(data, null, 2));

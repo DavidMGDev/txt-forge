@@ -135,6 +135,8 @@
 
     let showErrorDialog = $state(false);
 
+    let showVersionResetDialog = $state(false); // <--- NEW
+
     let dialogTitle = $state('');
 
     let dialogMessage = $state('');
@@ -242,7 +244,15 @@
 
             projectConfig = data.projectConfig;
 
-            isDebug = data.isDebug; // <--- Capture debug state
+            isDebug = data.isDebug; 
+
+            // NEW: Check for Version Reset
+
+            if (data.configWasReset) {
+
+                showVersionResetDialog = true;
+
+            }
 
             logUI('Debug mode active. Session:', sessionId);
 
@@ -1172,6 +1182,44 @@
                 <button onclick={() => showErrorDialog = false} class="w-full py-3 bg-red-900/30 hover:bg-red-900/50 border border-red-500/30 text-red-200 font-bold rounded-xl transition-colors">
 
                     Close
+
+                </button>
+
+            </div>
+
+        </div>
+
+    {/if}
+
+    <!-- VERSION RESET DIALOG -->
+
+    {#if showVersionResetDialog && !isShuttingDown}
+
+        <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm" transition:fade>
+
+            <div class="bg-slate-950 border border-amber-500/30 rounded-3xl p-8 w-full max-w-md shadow-[0_0_50px_rgba(245,158,11,0.15)] relative flex flex-col items-center text-center animate-fade-in-up">
+
+                <div class="w-16 h-16 bg-amber-900/20 rounded-full flex items-center justify-center mb-5 border border-amber-500/20">
+
+                    <span class="text-3xl text-amber-500">⚡</span>
+
+                </div>
+
+                <h3 class="text-2xl font-bold text-white mb-2">Project Config Reset</h3>
+
+                <p class="text-slate-400 mb-8 text-sm leading-relaxed">
+
+                    TXT-Forge has been updated. To ensure compatibility, your previous project configuration has been reset to defaults.
+
+                    <br><br>
+
+                    <span class="text-amber-500/80 text-xs">Please re-select your preferences and save a new configuration after your next export.</span>
+
+                </p>
+
+                <button onclick={() => showVersionResetDialog = false} class="w-full py-3 bg-amber-900/20 hover:bg-amber-900/40 border border-amber-500/30 text-amber-200 font-bold rounded-xl transition-colors">
+
+                    Acknowledge & Continue
 
                 </button>
 

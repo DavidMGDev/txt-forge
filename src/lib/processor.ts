@@ -611,7 +611,12 @@ export async function processFiles(config: ProcessConfig): Promise<ProcessResult
                 const fullPath = path.join(sourceRoot, relPath);
                 try {
                     const stat = await fs.stat(fullPath);
+                    // SECURITY CHECK: Never process binary/media files for content
+                    const ext = path.extname(fullPath).toLowerCase();
+                    if (BINARY_EXTENSIONS.has(ext)) continue;
+
                     if (stat.isDirectory()) {
+                        // scanFiles already handles BINARY_EXTENSIONS exclusion by default (includeBinaries=false)
                         const dirFiles = await scanFiles(sourceRoot, fullPath, [], Array.from(ignorePatterns));
                         dirFiles.forEach(f => explicitFiles.add(f));
                     } else if (stat.isFile()) {

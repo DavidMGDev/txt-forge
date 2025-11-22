@@ -133,14 +133,15 @@
 
         <!-- Checkbox (Keep existing) -->
         <button
-            onclick={(e) => { e.stopPropagation(); handleToggle(); }}
+            onclick={(e) => { e.stopPropagation(); if(!node.isMedia) handleToggle(); }}
+            disabled={node.isMedia}
+            title={node.isMedia ? "Media files are excluded from merged text content but appear in the Tree map." : "Toggle selection"}
             class="w-4 h-4 rounded border flex items-center justify-center transition-all
-
-            {isFullyChecked || isIndeterminate
-
-                ? 'bg-orange-600 border-orange-600 text-white shadow-[0_0_10px_rgba(2ea,88,12,0.4)]'
-
-                : 'border-slate-700 bg-slate-900/50 hover:border-orange-500/50'}"
+            {node.isMedia 
+                ? 'bg-slate-800 border-slate-800 opacity-50 cursor-not-allowed' 
+                : (isFullyChecked || isIndeterminate
+                    ? 'bg-orange-600 border-orange-600 text-white shadow-[0_0_10px_rgba(2ea,88,12,0.4)]'
+                    : 'border-slate-700 bg-slate-900/50 hover:border-orange-500/50 cursor-pointer')}"
         >
 
             {#if isFullyChecked}

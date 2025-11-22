@@ -13,7 +13,7 @@ export async function GET() {
 
     // 2. Load User Config
     const config = loadConfig();
-    const projectConfig = loadProjectConfig(cwd); // <--- NEW
+    const { config: projectConfig, wasReset } = loadProjectConfig(cwd); // <--- UPDATED: Destructure result
 
     // 3. Calculate Global Vault Path for display
     const globalPath = path.join(os.homedir(), '.txt-forge-vault');
@@ -25,6 +25,7 @@ export async function GET() {
         savedCustomPath: config.lastCustomPath || '',
         globalVaultPath: globalPath,
         projectConfig,
+        configWasReset: wasReset, // <--- NEW: Inform frontend
         // DEBUG: Pass the env flag to the frontend
         isDebug: process.env.TXT_FORGE_DEBUG === 'true'
     });
