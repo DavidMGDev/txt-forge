@@ -15,7 +15,23 @@ try {
     APP_VERSION = pkg.version;
 } catch (e) { console.error("Could not read app version"); }
 
-export { APP_VERSION }; // Export for use in other files
+export { APP_VERSION };
+
+// --- DYNAMIC CWD MANAGEMENT ---
+let CURRENT_WORKING_DIR = process.env.TXT_FORGE_CWD || process.cwd();
+
+export function getCwd() {
+    return CURRENT_WORKING_DIR;
+}
+
+export function setCwd(newPath) {
+    if (fs.existsSync(newPath)) {
+        CURRENT_WORKING_DIR = path.resolve(newPath);
+        return true;
+    }
+    return false;
+}
+// ------------------------------
 
 const CONFIG_DIR = path.join(os.homedir(), '.txt-forge');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');

@@ -1,12 +1,12 @@
 import { json } from '@sveltejs/kit';
 import { detectCodebase, processFiles } from '$lib/processor';
-import { loadProjectConfig, checkForUpdate } from '$lib/server/sys-utils';
+import { loadProjectConfig, checkForUpdate, getCwd } from '$lib/server/sys-utils';
 
 export async function POST({ request }) {
     const { saveToVault, hideIgnoredInTree, customPath } = await request.json();
 
     // 1. Determine Working Directory
-    const cwd = process.env.TXT_FORGE_CWD || process.cwd();
+    const cwd = getCwd();
 
     // 2. Determine Save Mode
     let saveMode: 'custom' | 'global' | 'root' = 'root';

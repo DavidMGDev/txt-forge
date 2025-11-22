@@ -1,11 +1,11 @@
 import { json } from '@sveltejs/kit';
 import { detectCodebase } from '$lib/processor';
-import { loadConfig, loadProjectConfig, checkForUpdate } from '$lib/server/sys-utils';
+import { loadConfig, loadProjectConfig, checkForUpdate, getCwd } from '$lib/server/sys-utils';
 import os from 'os';
 import path from 'path';
 
 export async function GET() {
-    const cwd = process.env.TXT_FORGE_CWD || process.cwd();
+    const cwd = getCwd();
     const sessionId = process.env.FORGE_SESSION_ID;
 
     // 1. Run Detection

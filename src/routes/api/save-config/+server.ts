@@ -1,8 +1,9 @@
 import { json } from '@sveltejs/kit';
-import { saveProjectConfig } from '$lib/server/sys-utils';
+import { saveProjectConfig, getCwd } from '$lib/server/sys-utils';
 
 export async function POST({ request }) {
-    const { path, config } = await request.json();
+    const { config } = await request.json();
+    const path = getCwd();
     saveProjectConfig(path, config);
     return json({ success: true });
 }

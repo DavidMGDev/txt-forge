@@ -1,11 +1,12 @@
 import { json } from '@sveltejs/kit';
 import { processFiles } from '$lib/processor';
-import { logDebug } from '$lib/server/logger'; // <--- Import Logger
+import { logDebug } from '$lib/server/logger';
+import { getCwd } from '$lib/server/sys-utils';
 
 export async function POST({ request }) {
     logDebug('Forge request received');
     const body = await request.json();
-    const cwd = process.env.TXT_FORGE_CWD || process.cwd();
+    const cwd = getCwd();
 
     const result = await processFiles({
         sourceDir: cwd,
@@ -14,7 +15,8 @@ export async function POST({ request }) {
         templateIds: body.templateIds,
         maxChars: body.maxChars,
         selectedFiles: body.selectedFiles,
-        hideIgnoredInTree: body.hideIgnoredInTree // <--- ADDED
+        hideIgnoredInTree: body.hideIgnoredInTree,
+        disableSplitting: body.disableSplitting
     });
 
     logDebug('Forge processing complete', result.success);

@@ -108,6 +108,7 @@ export interface ProcessConfig {
     selectedFiles?: string[];
     // UPDATED: Inverted Logic
     hideIgnoredInTree?: boolean;
+    disableSplitting?: boolean;
 }
 
 interface ProcessResult {
@@ -707,7 +708,7 @@ export async function processFiles(config: ProcessConfig): Promise<ProcessResult
 
         await fs.writeFile(path.join(mergedDir, 'Source-Tree.txt'), finalTreeContent, 'utf-8');
 
-        const generatedFiles = await mergeFiles(fileMap, mergedDir, config.maxChars);
+        const generatedFiles = await mergeFiles(fileMap, mergedDir, config.maxChars, config.disableSplitting);
 
         generatedFiles.unshift('Source-Tree.txt');
 
@@ -829,12 +830,34 @@ async function scanFiles(rootDir: string, currentDir: string, extensions: string
 async function mergeFiles(
     files: { relPath: string, content: string }[],
     outputDir: string,
-    maxChars: number
+    maxChars: number,
+    disableSplitting: boolean = false
 ): Promise<string[]> {
 
     const createdFiles: string[] = [];
     let fileIndex = 1;
 
+    // --- NO SPLIT MODE ---
+    if (disableSplitting) {
+        const filename = `Source-1 (Full Context).txt`;
+
+        // Just merge everything linearly. No Index header needed as per request.
+        // We just separate files with headers.
+        let fullContent = "";
+        
+        // Sort files by path for consistency
+        files.sort((a, b) => a.relPath.localeCompare(b.relPath));
+
+        for (const file of files) {
+            const header = `\n${'='.repeat(50)}\nFile: ${file.relPath}\n${'='.repeat(50)}\n\n`;
+            fullContent += header + file.content + "\n\n";
+        }
+
+        await fs.writeFile(path.join(outputDir, filename), fullContent, 'utf-8');
+        return [filename];
+    }
+
+    // --- STANDARD SPLIT MODE ---
     // 1. Separate Standard vs Multipart
     // We preserve the incoming order (Source Tree order) for standard files.
     const standardFiles: { relPath: string, fullText: string }[] = [];

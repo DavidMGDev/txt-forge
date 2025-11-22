@@ -35,6 +35,7 @@
     let selectedIds: string[] = $state([]);
 
     let maxChars = $state(75000);
+    let disableSplitting = $state(false);
 
     let customPath = $state('');
 
@@ -98,17 +99,21 @@
         const savedMax = projectConfig.maxChars || 75000;
         if (maxChars !== savedMax) return true;
 
-        // 2. Ignored Files Toggle
+        // 2. Disable Splitting (New)
+        const savedSplit = !!projectConfig.disableSplitting;
+        if (disableSplitting !== savedSplit) return true;
+
+        // 3. Ignored Files Toggle
         const configInclude = !projectConfig.hideIgnoredInTree;
         if (includeIgnoredFiles !== configInclude) return true;
 
-        // 3. Templates
+        // 4. Templates
         // Create copies to avoid mutating original arrays with sort()
         const currentTmpl = [...selectedIds].sort();
         const savedTmpl = [...(projectConfig.templateIds || [])].sort();
         if (JSON.stringify(currentTmpl) !== JSON.stringify(savedTmpl)) return true;
 
-        // 4. Selected Files
+        // 5. Selected Files
         const savedFiles = projectConfig.selectedFiles || [];
         // Quick size check
         if (selectedFilePaths.size !== savedFiles.length) return true;
@@ -274,6 +279,10 @@
                 if (projectConfig.maxChars) {
                     maxChars = projectConfig.maxChars;
                 }
+                // Load Split Setting
+                if (projectConfig.disableSplitting !== undefined) {
+                    disableSplitting = projectConfig.disableSplitting;
+                }
             } else {
                 selectedIds = [...detectedIds];
             }
@@ -425,7 +434,7 @@
             const data = await res.json();
             
             if (data.success) {
-                alert('Update Successful! Please close this window and restart txt-forge from your terminal.');
+                // REMOVED ALERT. Just exit.
                 await exitApp();
             } else {
                 alert('Auto-update failed. Please run: npm install -g txt-forge');
@@ -456,27 +465,20 @@
             const data = await res.json();
             
             if (data.success && data.path) {
-                // 2. Launch New Instance
-                logUI('Launching new instance in:', data.path);
-                
-                const launchRes = await fetch('/api/launch', {
+                // 2. Switch Directory
+                const switchRes = await fetch('/api/switch-dir', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ path: data.path })
                 });
                 
-                const launchData = await launchRes.json();
-                
-                if (launchData.success) {
-                    // Success! The CLI will open the new tab automatically.
-                    // We just stop the loader here.
-                } else {
-                    alert('Failed to launch new instance: ' + launchData.message);
+                if (switchRes.ok) {
+                    // Reload page to trigger fresh detect on new CWD
+                    window.location.reload();
                 }
             }
         } catch (err) {
             console.error(err);
-            alert('An error occurred while trying to switch directories.');
         } finally {
             isProcessing = false;
         }
@@ -872,7 +874,9 @@
 
             hideIgnoredInTree: !includeIgnoredFiles,
 
-            maxChars: maxChars // <--- ADDED
+            maxChars: maxChars,
+
+            disableSplitting: disableSplitting
 
         };
 
@@ -944,7 +948,9 @@
 
                     // UPDATED: Invert logic for backend.
                     // If "Include" is TRUE, then "Hide" is FALSE.
-                    hideIgnoredInTree: !includeIgnoredFiles
+                    hideIgnoredInTree: !includeIgnoredFiles,
+
+                    disableSplitting
 
                 })
 
@@ -1378,24 +1384,22 @@
         </h1>
 
         <!-- UPDATED: Removed 'inline-flex', 'truncate', and 'max-w' constraints. Added 'break-all' -->
-        <div class="flex flex-col md:flex-row items-center justify-center gap-2 bg-black/40 backdrop-blur-md pl-6 pr-3 py-2 rounded-2xl border border-white/5 shadow-lg max-w-[90vw]">
+        <div class="flex flex-col md:flex-row items-center justify-center gap-4 bg-black/40 backdrop-blur-md pl-6 pr-2 py-2 rounded-2xl border border-white/5 shadow-lg max-w-[90vw]">
             
             <span class="text-slate-500 text-[10px] uppercase font-bold tracking-[0.2em] whitespace-nowrap">Target:</span>
 
-            <span class="text-orange-300 font-mono text-xs break-all text-center drop-shadow-md leading-relaxed mr-2">
+            <span class="text-orange-300 font-mono text-xs break-all text-center drop-shadow-md leading-relaxed">
                 {cwd || 'Scanning...'}
             </span>
 
-            <!-- NEW: Switch Directory Button -->
+            <!-- Rectangular Browse Button -->
             <button 
                 onclick={handleSwitchDirectory}
                 disabled={isProcessing}
-                class="w-8 h-8 flex items-center justify-center rounded-xl bg-white/5 hover:bg-orange-500/20 text-slate-400 hover:text-orange-400 border border-transparent hover:border-orange-500/30 transition-all group"
-                title="Launch TXT-Forge in another folder (New Tab)"
+                class="px-4 py-1.5 bg-white/5 hover:bg-orange-500/10 border border-white/10 hover:border-orange-500/30 text-[10px] font-bold uppercase tracking-wider text-slate-400 hover:text-orange-300 rounded-lg transition-all flex items-center gap-2"
             >
-                <svg class="w-4 h-4 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
-                </svg>
+                <span>Browse</span>
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
             </button>
 
         </div>
@@ -1761,7 +1765,7 @@
 
             <!-- SETTINGS CARD -->
 
-            <div class="bg-slate-900/40 backdrop-blur-xl border border-white/10 rounded-3xl p-6 shadow-2xl relative overflow-hidden">
+            <div class="bg-slate-900/40 backdrop-blur-xl border border-white/10 rounded-3xl p-6 shadow-2xl relative overflow-hidden transition-all duration-300">
 
                 <div class="flex justify-between items-center z-20 relative">
 
@@ -1771,21 +1775,50 @@
 
                     </div>
 
-                    <button onclick={() => settingsOpen = !settingsOpen} class="w-8 h-8 flex items-center justify-center rounded-full bg-white/5 hover:bg-orange-500 text-slate-400 hover:text-white transition-all">
+                    <button onclick={() => settingsOpen = !settingsOpen} class="w-8 h-8 flex items-center justify-center rounded-full bg-white/5 hover:bg-orange-500 text-slate-400 hover:text-white transition-all {settingsOpen ? 'bg-orange-500 text-white rotate-180' : ''}">
 
-                        ⚙
+                        <!-- CONFIG SVG -->
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
 
                     </button>
 
                 </div>
 
-                <div class="grid grid-cols-1 grid-rows-1 mt-4 min-h-[40px]">
+                <div class="grid transition-[grid-template-rows] duration-300 ease-out {settingsOpen ? 'grid-rows-[1fr] pt-4' : 'grid-rows-[0fr]'}">
 
-                    {#if settingsOpen}
+                    <div class="overflow-hidden min-h-0 flex flex-col gap-4">
 
-                        <div class="col-start-1 row-start-1 pt-1" transition:fade={{ duration: 200 }}>
+                        
 
-                            <label for="maxCharsInput" class="text-[10px] text-orange-400 uppercase font-bold mb-2 block">Max Characters per File</label>
+                        <!-- TOGGLE: Disable Splitting -->
+
+                        <div class="flex items-center justify-between bg-black/20 p-3 rounded-xl border border-white/5">
+
+                            <div class="flex flex-col">
+
+                                <span class="text-[10px] font-bold text-slate-300 uppercase tracking-wider">Merge All Files</span>
+
+                                <span class="text-[9px] text-slate-500">One single .txt file, no index.</span>
+
+                            </div>
+
+                            <label class="relative inline-flex items-center cursor-pointer">
+
+                                <input type="checkbox" bind:checked={disableSplitting} class="sr-only peer">
+
+                                <div class="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-slate-400 after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-600 peer-checked:after:bg-white"></div>
+
+                            </label>
+
+                        </div>
+
+
+
+                        <!-- SLIDER: Max Chars -->
+
+                        <div class="bg-black/20 p-3 rounded-xl border border-white/5 opacity-100 transition-opacity duration-300 {disableSplitting ? 'opacity-30 pointer-events-none grayscale' : ''}">
+
+                            <label for="maxCharsInput" class="text-[10px] text-orange-400 uppercase font-bold mb-2 block">Split Threshold</label>
 
                             <div class="flex gap-4 items-center">
 
@@ -1797,7 +1830,9 @@
 
                                     bind:value={maxChars}
 
-                                    class="flex-1 accent-orange-500 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer"
+                                    disabled={disableSplitting}
+
+                                    class="flex-1 accent-orange-500 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer disabled:cursor-not-allowed"
 
                                 />
 
@@ -1811,21 +1846,35 @@
 
                         </div>
 
-                    {:else}
 
-                         <div class="col-start-1 row-start-1" transition:fade={{ duration: 200 }}>
 
-                            <div class="text-[11px] text-slate-500 font-medium leading-relaxed">
+                    </div>
 
-                                Files larger than <span class="text-orange-400">{(maxChars/1000).toFixed(0)}k</span> chars will be smartly split at function boundaries.
+                </div>
+                
+                <!-- SUMMARY TEXT (Visible when closed) -->
 
-                             </div>
+                {#if !settingsOpen}
+
+                    <div class="mt-3" transition:fade={{ duration: 200 }}>
+
+                        <div class="text-[11px] text-slate-500 font-medium leading-relaxed">
+
+                            {#if disableSplitting}
+
+                                <span class="text-orange-400">Merging all files</span> into one single output.
+
+                            {:else}
+
+                                Splitting files larger than <span class="text-orange-400">{(maxChars/1000).toFixed(0)}k</span> chars.
+
+                            {/if}
 
                         </div>
 
-                    {/if}
+                    </div>
 
-                </div>
+                {/if}
 
             </div>
 

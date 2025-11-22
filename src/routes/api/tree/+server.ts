@@ -1,10 +1,11 @@
 import { json } from '@sveltejs/kit';
 import { scanDirectory } from '$lib/tree';
 import { templates } from '$lib/templates';
-import path from 'path'; // Import path
+import path from 'path';
+import { getCwd } from '$lib/server/sys-utils';
 
 export async function GET({ url }) {
-    const cwd = process.env.TXT_FORGE_CWD || process.cwd();
+    const cwd = getCwd();
 
     // NEW: Lazy Load support
     const subPath = url.searchParams.get('path') || '';
