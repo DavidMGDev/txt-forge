@@ -447,7 +447,17 @@
 
                     fileTypeMap.set(node.path, node.type);
 
-                    currentLevelPaths.push(node.path); // Add self
+                    
+
+                    // FIX: Only add to the selectable paths list if it is a folder OR a non-media file.
+
+                    // This ensures that when a parent folder is toggled, this node is included in that action ONLY if it's valid content.
+
+                    if (node.type === 'folder' || !node.isMedia) {
+
+                        currentLevelPaths.push(node.path); 
+
+                    }
 
                     // A node is effectively ignored if it is marked ignored OR its parent is ignored
 
@@ -457,8 +467,6 @@
 
                     // Logic for initial selection: Only add if NOT effectively ignored
 
-                    // --- UPDATED LOGIC HERE: ---
-
                     // We verify it is not media before adding it to the initial selection
 
                     if (!isEffectivelyIgnored && !node.isMedia) {
@@ -466,8 +474,6 @@
                         initialSet.add(node.path);
 
                     }
-
-                    // ---------------------------
 
 
 
@@ -657,7 +663,15 @@
 
                         fileTypeMap.set(node.path, node.type);
 
-                        paths.push(node.path);
+                        
+
+                        // FIX: Filter out media from bulk operations in lazy loaded trees too
+
+                        if (node.type === 'folder' || !node.isMedia) {
+
+                            paths.push(node.path);
+
+                        }
 
                         const isEffectivelyIgnored = node.isIgnored || parentIgnored;
 

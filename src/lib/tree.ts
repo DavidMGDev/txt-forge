@@ -35,7 +35,9 @@ const SYSTEM_HIDDEN = [
 
 const MEDIA_EXTENSIONS = new Set([
     '.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.svg', '.bmp', '.tiff',
-    '.mp3', '.wav', '.ogg', '.mp4', '.webm', '.mov', '.avi', '.res',
+    '.mp3', '.wav', '.ogg', '.mp4', '.webm', '.mov', '.avi',
+    // Godot Binary Formats
+    '.res', '.scn',
     // Issue #3 Fix: Add 3D formats here
     '.fbx', '.obj', '.blend', '.glb', '.gltf', '.3ds',
     '.pdf', '.zip', '.tar', '.gz', '.7z', '.rar',

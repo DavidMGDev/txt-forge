@@ -19,6 +19,8 @@ const BINARY_EXTENSIONS = new Set([
     '.fbx', '.obj', '.blend', '.glb', '.gltf', '.3ds',
     // Archives/Binaries
     '.pdf', '.zip', '.tar', '.gz', '.7z', '.rar', '.exe', '.dll', '.so', '.dylib', '.bin', '.apk', '.aab',
+    // Godot Binary Formats
+    '.res', '.scn',
     // Android Specific
     '.keystore', '.jks'
 ]);
