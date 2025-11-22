@@ -1,9 +1,10 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { spawn, exec } from 'child_process'; // Added exec
+import { spawn, exec } from 'child_process';
 import { fileURLToPath } from 'url';
-import https from 'https'; // Added https
+import https from 'https';
+import net from 'net'; // <--- NEW: For port checking
 
 // Resolve package.json to get the Source of Truth version
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -199,4 +200,63 @@ export async function performGlobalUpdate() {
             resolve(true);
         });
     });
+}
+
+// --- MULTI-INSTANCE LAUNCHER ---
+
+export async function getFreePort() {
+    return new Promise((resolve, reject) => {
+        const srv = net.createServer();
+        srv.listen(0, () => {
+            const port = srv.address().port;
+            srv.close((err) => {
+                if (err) reject(err);
+                else resolve(port);
+            });
+        });
+        srv.on('error', (err) => reject(err));
+    });
+}
+
+export async function launchNewInstance(targetPath) {
+    // 1. Find a free port so we don't kill the current session
+    const port = await getFreePort();
+    
+    // 2. Resolve path to bin/cli.js
+    // Since we are in src/lib/server/sys-utils.js (dev) or build/server/chunks/sys-utils.js (prod),
+    // we need a reliable way to find the bin.
+    // In production 'npm install -g', the bin is usually alongside the build.
+    // Strategy: Walk up until we find package.json, then assume bin/cli.js is there.
+    
+    let rootDir = __dirname;
+    let cliPath = '';
+    
+    // Simple walk up 4 levels (covers src/lib/server and build/chunks/...)
+    for (let i = 0; i < 5; i++) {
+        if (fs.existsSync(path.join(rootDir, 'package.json'))) {
+            cliPath = path.join(rootDir, 'bin', 'cli.js');
+            break;
+        }
+        rootDir = path.dirname(rootDir);
+    }
+
+    if (!cliPath || !fs.existsSync(cliPath)) {
+        throw new Error('Could not locate CLI entry point.');
+    }
+
+    // 3. Spawn the new process DETACHED
+    // We spawn 'node' pointing to cli.js
+    const child = spawn(process.execPath, [cliPath], {
+        detached: true,
+        stdio: 'ignore',
+        cwd: targetPath, // <--- Important: Run in the new folder
+        env: {
+            ...process.env,
+            PORT: port.toString(), // Pass the new port
+            TXT_FORGE_CWD: targetPath // Explicitly set CWD env override
+        }
+    });
+
+    child.unref(); // Allow parent to stop waiting for this child
+    return port;
 }

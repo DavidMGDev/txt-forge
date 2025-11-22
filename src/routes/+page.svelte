@@ -448,6 +448,40 @@
         });
     }
 
+    async function handleSwitchDirectory() {
+        isProcessing = true;
+        try {
+            // 1. Pick Folder
+            const res = await fetch('/api/select-folder', { method: 'POST' });
+            const data = await res.json();
+            
+            if (data.success && data.path) {
+                // 2. Launch New Instance
+                logUI('Launching new instance in:', data.path);
+                
+                const launchRes = await fetch('/api/launch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: data.path })
+                });
+                
+                const launchData = await launchRes.json();
+                
+                if (launchData.success) {
+                    // Success! The CLI will open the new tab automatically.
+                    // We just stop the loader here.
+                } else {
+                    alert('Failed to launch new instance: ' + launchData.message);
+                }
+            }
+        } catch (err) {
+            console.error(err);
+            alert('An error occurred while trying to switch directories.');
+        } finally {
+            isProcessing = false;
+        }
+    }
+
     // Update: Add showOverlay parameter with default 'true'
 
     async function loadFileTree(showOverlay: boolean = true) {
@@ -1344,15 +1378,25 @@
         </h1>
 
         <!-- UPDATED: Removed 'inline-flex', 'truncate', and 'max-w' constraints. Added 'break-all' -->
-        <div class="flex flex-col md:flex-row items-center justify-center gap-2 bg-black/40 backdrop-blur-md px-6 py-3 rounded-2xl border border-white/5 shadow-lg max-w-[90vw]">
-
+        <div class="flex flex-col md:flex-row items-center justify-center gap-2 bg-black/40 backdrop-blur-md pl-6 pr-3 py-2 rounded-2xl border border-white/5 shadow-lg max-w-[90vw]">
+            
             <span class="text-slate-500 text-[10px] uppercase font-bold tracking-[0.2em] whitespace-nowrap">Target:</span>
 
-            <span class="text-orange-300 font-mono text-xs break-all text-center drop-shadow-md leading-relaxed">
-
+            <span class="text-orange-300 font-mono text-xs break-all text-center drop-shadow-md leading-relaxed mr-2">
                 {cwd || 'Scanning...'}
-
             </span>
+
+            <!-- NEW: Switch Directory Button -->
+            <button 
+                onclick={handleSwitchDirectory}
+                disabled={isProcessing}
+                class="w-8 h-8 flex items-center justify-center rounded-xl bg-white/5 hover:bg-orange-500/20 text-slate-400 hover:text-orange-400 border border-transparent hover:border-orange-500/30 transition-all group"
+                title="Launch TXT-Forge in another folder (New Tab)"
+            >
+                <svg class="w-4 h-4 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                </svg>
+            </button>
 
         </div>
 

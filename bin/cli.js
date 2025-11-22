@@ -11,7 +11,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Adjust path to point to the built server
 const serverPath = path.join(__dirname, '../build/index.js');
 const USER_CWD = process.cwd();
-const PORT = 4567;
+// UPDATED: Allow dynamic port via Env (for multi-instance) or default to 4567
+const PORT = process.env.PORT ? parseInt(process.env.PORT) : 4567;
 const SESSION_ID = randomUUID();
 
 // --- Argument Parsing ---
