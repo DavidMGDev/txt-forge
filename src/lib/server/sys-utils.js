@@ -237,23 +237,23 @@ export function relaunchInNewWindow(targetPath) {
 
     if (process.platform === 'win32') {
         // Windows Fixes:
-        // 1. Increase timeout to 5 seconds to prevent port conflict crashing.
-        // 2. Use windowsVerbatimArguments + manual quoting to handle paths with spaces correctly.
-        // 3. Use windowsHide: true to prevent the "Second Console" (the launcher) from flashing.
+        // 1. Use a 3 second timeout (reduced from 5).
+        // 2. Use windowsVerbatimArguments + manual quoting.
+        // 3. Use windowsHide: true.
         
         cmd = 'cmd.exe';
         
-        // Inner command: The actual work in the new window
-        // /nobreak prevents user keystrokes from skipping the wait
-        const innerCmd = `echo Switching to New Folder... & timeout /t 5 /nobreak & cd /d "${absPath}" & txt-forge`;
+        // Inner command:
+        // 1. Wait 3 seconds (requested optimization).
+        // 2. Change Directory (/d handles drive letters).
+        // 3. Run txt-forge.
+        const innerCmd = `echo Switching to New Folder... & timeout /t 3 /nobreak & cd /d "${absPath}" & txt-forge`;
         
         // Outer command: Starts the new window
-        // cmd /c start "Title" cmd /k "..."
-        // We quote the title and the inner command explicitly.
         args = ['/c', 'start', '"TXT-Forge"', 'cmd', '/k', `"${innerCmd}"`];
         
         options.windowsVerbatimArguments = true;
-        options.windowsHide = true; // <--- This fixes the "Two Consoles" issue
+        options.windowsHide = true;
     } 
     else if (process.platform === 'darwin') {
         // macOS (AppleScript)

@@ -46,6 +46,9 @@
     let savedCustomPath = $state('');
 
     let globalVaultPath = $state('');
+    
+    // Connection State
+    let connectionLost = $state(false);
 
     // Debug State
 
@@ -188,6 +191,8 @@
 
     // --- LOGIC ---
 
+    let healthInterval: any;
+
     onMount(async () => {
 
         await detect();
@@ -201,13 +206,33 @@
         }, 100);
 
         window.addEventListener('beforeunload', handleUnload);
+        
+        // Start Heartbeat (every 2 seconds)
+        healthInterval = setInterval(async () => {
+            if (isShuttingDown || connectionLost) return;
+            
+            try {
+                // Timeout after 2s to prevent hanging requests
+                const controller = new AbortController();
+                const id = setTimeout(() => controller.abort(), 2000);
+                
+                const res = await fetch('/api/health', { signal: controller.signal });
+                clearTimeout(id);
+
+                if (!res.ok) throw new Error("Server unreachable");
+            } catch (e) {
+                // Only trigger if we are NOT currently trying to exit/switch
+                if (!isShuttingDown) {
+                    connectionLost = true;
+                }
+            }
+        }, 2000);
 
     });
 
     onDestroy(() => {
-
+        if (healthInterval) clearInterval(healthInterval);
         if (typeof window !== 'undefined') window.removeEventListener('beforeunload', handleUnload);
-
     });
 
     function handleUnload() {
@@ -1172,6 +1197,26 @@
 
         </div>
 
+    {/if}
+
+    <!-- CONNECTION LOST DIALOG -->
+    {#if connectionLost && !isShuttingDown}
+        <div class="fixed inset-0 z-[300] flex items-center justify-center bg-black/95 backdrop-blur-md" transition:fade>
+            <div class="bg-slate-950 border border-red-900/50 rounded-3xl p-10 w-full max-w-md shadow-[0_0_50px_rgba(220,38,38,0.2)] relative flex flex-col items-center text-center animate-pulse-slow">
+                <div class="w-20 h-20 bg-red-900/20 rounded-full flex items-center justify-center mb-6 border border-red-500/20">
+                    <svg class="w-10 h-10 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                </div>
+                <h3 class="text-2xl font-black text-white mb-3 tracking-tight">Connection Lost</h3>
+                <p class="text-slate-400 mb-8 leading-relaxed text-sm">
+                    The TXT-Forge background process has stopped or was closed. 
+                    <br><br>
+                    Please return to your terminal, restart <code class="text-red-400">txt-forge</code>, and refresh this page.
+                </p>
+                <button onclick={() => window.location.reload()} class="w-full py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-bold rounded-xl transition-all">
+                    Refresh Page
+                </button>
+            </div>
+        </div>
     {/if}
 
     <!-- SUCCESS DIALOG -->
