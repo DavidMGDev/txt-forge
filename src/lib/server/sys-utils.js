@@ -217,34 +217,3 @@ export async function performGlobalUpdate() {
     });
 }
 
-// --- PROCESS MANAGEMENT ---
-
-/**
- * Signals the parent process (bin/cli.js) to restart the application.
- * @param {string | null} targetPath - Optional new directory to restart in.
- */
-export function triggerRestart(targetPath = null) {
-    if (process.send) {
-        // Send message to parent
-        process.send({ 
-            type: 'RESTART', 
-            path: targetPath 
-        });
-        
-        // We don't need to exit process.exit() here immediately.
-        // The parent (cli.js) will receive the message and kill() this process.
-        // This ensures the parent acknowledges the request before we die.
-    } else {
-        console.error("IPC channel not available. Cannot restart via Manager.");
-        // Fallback for dev mode (no IPC) -> just exit, manual restart needed
-        process.exit(0);
-    }
-}
-
-export function triggerShutdown() {
-    if (process.send) {
-        process.send({ type: 'SHUTDOWN' });
-    } else {
-        process.exit(0);
-    }
-}

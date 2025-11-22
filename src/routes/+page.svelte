@@ -449,20 +449,6 @@
         }
     }
 
-    async function performRestart() {
-        // 1. Tell backend to restart
-        await fetch('/api/restart', { method: 'POST' });
-        
-        // 2. Show a temporary loading state or keep the "Update Complete" dialog
-        // The server kills itself immediately.
-        
-        // 3. Wait and Reload
-        // We wait ~3 seconds for the CLI to kill the process and spawn the new one.
-        // Then we reload the page.
-        setTimeout(() => {
-            window.location.reload();
-        }, 3000);
-    }
 
     async function handleSkipUpdate() {
         if (!updateInfo) return;
@@ -482,26 +468,30 @@
             const data = await res.json();
             
             if (data.success && data.path) {
-                // 2. Trigger Switch
-                await fetch('/api/switch-dir', {
+                // 2. Tell server to change CWD variable
+                const switchRes = await fetch('/api/switch-dir', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ path: data.path })
                 });
                 
-                // Show loading state (the processing spinner is already active)
-                // Wait for server bounce, then reload. 
-                // Since the port is the same (4567), a reload connects to the NEW instance.
-                setTimeout(() => {
+                if (switchRes.ok) {
+                    // 3. Reload the page. This triggers onMount -> api/detect again.
+                    // Since api/detect reads 'getCwd()', it will see the new path.
+                    // This is effectively a "Fresh Launch" in the same tab.
                     window.location.reload();
-                }, 3000);
+                } else {
+                    alert('Failed to switch directory.');
+                    isProcessing = false;
+                }
+            } else {
+                isProcessing = false;
             }
         } catch (err) {
             console.error(err);
+            alert('An error occurred.');
             isProcessing = false;
         }
-        // Note: We don't set isProcessing = false in success case, 
-        // because we want the spinner to stay until reload.
     }
 
     // Update: Add showOverlay parameter with default 'true'
@@ -1360,12 +1350,13 @@
                 </div>
                 <h3 class="text-2xl font-black text-white mb-3 tracking-tight">Update Complete</h3>
                 <p class="text-slate-400 mb-8 leading-relaxed text-sm">
-                    TXT-Forge has been successfully updated to <span class="text-indigo-400 font-mono">v{updateInfo?.latest}</span>.
-                    <br>Restart now to apply changes.
+                    TXT-Forge has been updated to <span class="text-indigo-400 font-mono">v{updateInfo?.latest}</span>.
+                    <br><br>
+                    This tab will now close. Please run the command again in your terminal to use the new version.
                 </p>
-                <button onclick={performRestart} class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 hover:scale-[1.02]">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                    <span>Restart TXT-Forge</span>
+                <button onclick={exitApp} class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 hover:scale-[1.02]">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    <span>Close Session</span>
                 </button>
             </div>
         </div>
