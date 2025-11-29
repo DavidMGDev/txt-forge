@@ -35,6 +35,7 @@ const SYSTEM_HIDDEN = [
 
 const MEDIA_EXTENSIONS = new Set([
     '.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.svg', '.bmp', '.tiff',
+    '.dds', '.tga', '.hdr', '.exr',
     '.mp3', '.wav', '.ogg', '.mp4', '.webm', '.mov', '.avi',
     // Godot Binary Formats
     '.res', '.scn',

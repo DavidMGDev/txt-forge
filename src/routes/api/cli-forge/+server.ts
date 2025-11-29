@@ -25,42 +25,34 @@ export async function POST({ request }) {
         ? projectConfig.templateIds 
         : detection.ids;
         
-    const selectedFilesToUse = (projectConfig && projectConfig.selectedFiles) 
-        ? projectConfig.selectedFiles 
+    // UPDATED: Use selectionRules instead of selectedFiles (from previous guide)
+    const selectionRulesToUse = (projectConfig && projectConfig.selectionRules) 
+        ? projectConfig.selectionRules 
         : undefined;
 
-    // CLI flag overrides config if explicitly passed (logic: if hideIgnoredInTree is true from CLI, use it, else check config)
-
-    // However, CLI 'hideIgnoredInTree' comes from a flag.
-
-    // If user didn't pass flag, CLI passes false? In CLI.js: const isHidden = args.includes...
-
-    // Actually, simple logic: Use config if exists, otherwise default.
-
-    // But if user passes explicit CLI flags, they might expect override.
-
-    // For now, let's prioritize Config for 'selectedFiles' and 'templates'.
-
-    // For 'hideIgnored', we prioritize the CLI flag if it matches the intent (hidden), otherwise config.
-
+    // CLI flag overrides config if explicitly passed
     let finalHideIgnored = hideIgnoredInTree;
     if (projectConfig && projectConfig.hideIgnoredInTree !== undefined) {
-        // If CLI flag was NOT set (false), use config. If CLI flag WAS set (true), use CLI.
-        // Actually, just usage of config is preferred for consistency.
         finalHideIgnored = projectConfig.hideIgnoredInTree;
     }
 
-    const maxCharsToUse = (projectConfig && projectConfig.maxChars) ? projectConfig.maxChars : 75000; // <--- ADDED
+    const maxCharsToUse = (projectConfig && projectConfig.maxChars) ? projectConfig.maxChars : 75000;
+    
+    // NEW: Load Single File Mode setting
+    const disableSplittingToUse = (projectConfig && projectConfig.disableSplitting) !== undefined
+        ? projectConfig.disableSplitting
+        : false;
 
     // 4. Process Files (The "Forge" step) using detected templates
     const result = await processFiles({
         sourceDir: cwd,
         saveMode: saveMode,
         customPath: customPath,
-        templateIds: templatesToUse, // Use config or detected
-        maxChars: maxCharsToUse,     // <--- UPDATED
-        selectedFiles: selectedFilesToUse, // Use config files or undefined
-        hideIgnoredInTree: finalHideIgnored
+        templateIds: templatesToUse, 
+        maxChars: maxCharsToUse,     
+        selectionRules: selectionRulesToUse, // <--- UPDATED to use rules
+        hideIgnoredInTree: finalHideIgnored,
+        disableSplitting: disableSplittingToUse // <--- ADDED
     });
 
     return json({

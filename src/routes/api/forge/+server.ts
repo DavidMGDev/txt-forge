@@ -14,7 +14,7 @@ export async function POST({ request }) {
         customPath: body.customPath,
         templateIds: body.templateIds,
         maxChars: body.maxChars,
-        selectedFiles: body.selectedFiles,
+        selectionRules: body.selectionRules,
         hideIgnoredInTree: body.hideIgnoredInTree,
         disableSplitting: body.disableSplitting
     });

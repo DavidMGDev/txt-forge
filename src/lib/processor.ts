@@ -9,13 +9,14 @@ import { logDebug } from '$lib/server/logger.js';
 // --- ADD THIS CONSTANT ---
 
 const BINARY_EXTENSIONS = new Set([
-    // Images
+    // Images & Textures (Game Dev)
     '.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.svg', '.bmp', '.tiff', '.heic',
+    '.dds', '.tga', '.hdr', '.exr',
     // Fonts
     '.ttf', '.otf', '.woff', '.woff2', '.eot',
     // Audio/Video
     '.mp3', '.wav', '.ogg', '.mp4', '.webm', '.mov', '.avi', '.mkv',
-    // 3D Models (Issue #3 Fix)
+    // 3D Models
     '.fbx', '.obj', '.blend', '.glb', '.gltf', '.3ds',
     // Archives/Binaries
     '.pdf', '.zip', '.tar', '.gz', '.7z', '.rar', '.exe', '.dll', '.so', '.dylib', '.bin', '.apk', '.aab',
@@ -105,8 +106,8 @@ export interface ProcessConfig {
     customPath?: string;
     templateIds: string[];
     maxChars: number;
-    selectedFiles?: string[];
-    // UPDATED: Inverted Logic
+    // selectedFiles?: string[]; // <-- REMOVED (Legacy)
+    selectionRules?: Record<string, 'include' | 'exclude'>; // <-- ADDED
     hideIgnoredInTree?: boolean;
     disableSplitting?: boolean;
 }
@@ -123,6 +124,37 @@ export interface DetectionResult {
     ids: string[];
     reasons: Record<string, string[]>; // templateId -> list of filenames that triggered it
     gitStatus: 'none' | 'clean' | 'ignored'; // 'none' = no .git, 'clean' = has .git but no ignore entry, 'ignored' = already configured
+}
+
+// Helper to determine if a file is included based on whitelist/blacklist rules
+function isFileIncluded(
+    relPath: string, 
+    rules: Record<string, 'include' | 'exclude'>, 
+    isIgnoredByDefault: boolean,
+    isMedia: boolean
+): boolean {
+    if (isMedia) return false; // Never include media content text
+
+    // 1. Check for explicit rule on this file or nearest parent
+    let current = relPath;
+    while (current !== '.') {
+        // Normalizing path separators
+        const lookup = current.split(path.sep).join('/');
+        
+        if (rules[lookup] === 'include') return true;
+        if (rules[lookup] === 'exclude') return false;
+
+        const parent = path.dirname(current);
+        if (parent === current) break; // Reached root
+        current = parent;
+    }
+
+    // 2. Check root rule (".")
+    if (rules['.'] === 'include') return true;
+    if (rules['.'] === 'exclude') return false;
+
+    // 3. Fallback to default state (Templates + GitIgnore)
+    return !isIgnoredByDefault;
 }
 
 // Regex to find safe places to split code
@@ -608,35 +640,46 @@ export async function processFiles(config: ProcessConfig): Promise<ProcessResult
         
         activeTemplates.forEach(t => t.ignores.forEach(ign => ignorePatterns.add(ign.replace(/\/$/, ''))));
 
-        // 2. Determine Content Files
-        if (config.selectedFiles && config.selectedFiles.length > 0) {
-            // MODE A: Explicit Selection
+        // 2. Determine Content Files based on Whitelist/Blacklist Rules
+        
+        // Step A: Perform a broad scan of candidates. 
+        // We include everything initially, then filter using the rules engine.
+        // We pass the ignorePatterns to scanFiles, BUT strictly speaking, a Whitelist rule should override a gitignore.
+        // However, scanFiles is optimized to skip massive folders like node_modules. 
+        // Use standard ignore patterns for the scan, assuming user won't whitelist deep inside node_modules usually.
+        // If they do, scanFiles needs to know, but for stability, we stick to standard scan + filter.
+        
+        const validExtensions = new Set<string>();
+        // If specific templates selected, collect extensions. If none/auto, allow all (extension filtering happens later if needed)
+        activeTemplates.forEach(t => t.extensions.forEach(ext => validExtensions.add(ext)));
+        
+        // Scan everything (recursively), filtering binaries by default
+        const allCandidates = await scanFiles(sourceRoot, sourceRoot, [], Array.from(ignorePatterns), false);
 
-            const explicitFiles = new Set<string>();
-            for (const relPath of config.selectedFiles) {
-                const fullPath = path.join(sourceRoot, relPath);
-                try {
-                    const stat = await fs.stat(fullPath);
-                    // SECURITY CHECK: Never process binary/media files for content
-                    const ext = path.extname(fullPath).toLowerCase();
-                    if (BINARY_EXTENSIONS.has(ext)) continue;
+        const rules = config.selectionRules || {};
+        const explicitFiles = new Set<string>();
 
-                    if (stat.isDirectory()) {
-                        // scanFiles already handles BINARY_EXTENSIONS exclusion by default (includeBinaries=false)
-                        const dirFiles = await scanFiles(sourceRoot, fullPath, [], Array.from(ignorePatterns));
-                        dirFiles.forEach(f => explicitFiles.add(f));
-                    } else if (stat.isFile()) {
-                        explicitFiles.add(fullPath);
-                    }
-                } catch (e) { }
+        for (const fullPath of allCandidates) {
+            const relPath = path.relative(sourceRoot, fullPath).split(path.sep).join('/');
+            
+            // Determine "Default State" for this file
+            // If templates are active, default state depends on extension match
+            // If no templates (generic mode), default is TRUE (since it passed scanFiles)
+            let isIgnoredByDefault = false;
+            if (activeTemplates.length > 0) {
+                const ext = path.extname(fullPath).toLowerCase();
+                if (!validExtensions.has(ext)) isIgnoredByDefault = true;
             }
-            filesToProcess = Array.from(explicitFiles);
-        } else {
-             // MODE B: Template Fallback
-             const validExtensions = new Set<string>();
-             activeTemplates.forEach(t => t.extensions.forEach(ext => validExtensions.add(ext)));
-             filesToProcess = await scanFiles(sourceRoot, sourceRoot, Array.from(validExtensions), Array.from(ignorePatterns));
+
+            // Check Whitelist/Blacklist Logic
+            const shouldInclude = isFileIncluded(relPath, rules, isIgnoredByDefault, false); // isMedia handled by scanFiles
+
+            if (shouldInclude) {
+                explicitFiles.add(fullPath);
+            }
         }
+
+        filesToProcess = Array.from(explicitFiles);
 
         // 3. Determine Tree Files (The Visual Map)
         if (!config.hideIgnoredInTree) {
@@ -694,10 +737,21 @@ export async function processFiles(config: ProcessConfig): Promise<ProcessResult
                      continue;
                 }
 
+                // BINARY CONTENT CHECK (New)
+                // Even if extension is safe, check if content is binary to prevent
+                // encoding garbage or breaking the splitter.
+                const isBinary = await isBinaryFile(filePath);
+                if (isBinary) {
+                    console.warn(`Skipping binary content file: ${filePath}`);
+                    continue;
+                }
+
                 const content = await fs.readFile(filePath, 'utf-8');
                 const relPath = path.relative(sourceRoot, filePath);
                 fileMap.push({ original: filePath, relPath, content });
-            } catch (e) { }
+            } catch (e) { 
+                console.warn(`Failed to read file: ${filePath}`, e);
+            }
         }
 
         // --- GENERATE FILES (Keep existing) ---
@@ -753,6 +807,29 @@ async function ensureGitIgnore(rootDir: string): Promise<boolean> {
     }
 
     return false; // <--- Not Modified
+}
+
+/**
+ * Checks if a file contains binary data by reading the first 4KB
+ * and looking for null bytes (0x00).
+ */
+async function isBinaryFile(filePath: string): Promise<boolean> {
+    let handle: Awaited<ReturnType<typeof fs.open>> | null = null;
+    try {
+        handle = await fs.open(filePath, 'r');
+        const buffer = Buffer.alloc(4096);
+        const { bytesRead } = await handle.read(buffer, 0, 4096, 0);
+        
+        // Check for null bytes in the read chunk
+        for (let i = 0; i < bytesRead; i++) {
+            if (buffer[i] === 0) return true;
+        }
+        return false;
+    } catch (e) {
+        return false; // Assume text if we can't read (error will be caught later)
+    } finally {
+        if (handle) await handle.close();
+    }
 }
 
 async function cleanDirectory(dir: string) {

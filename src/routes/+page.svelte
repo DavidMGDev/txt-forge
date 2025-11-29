@@ -76,19 +76,17 @@
     // UPDATED: Variable reflects UI toggle state (ON = Include files)
     let includeIgnoredFiles = $state(true);
 
+    // State for Visuals (Derived from Rules)
     let selectedFilePaths: Set<string> = $state(new Set());
+    
+    // State for Logic (The Source of Truth)
+    let selectionRules: Record<string, 'include' | 'exclude'> = $state({});
 
-    // NEW: Store the default state for reset capability
-    let defaultFilePaths: Set<string> = $state(new Set());
+    // Baseline (Auto-detected) paths, used to calculate "default" state
+    let defaultIncludedPaths: Set<string> = $state(new Set());
 
-    // NEW: Check if current selection differs from default
-    let isTreeModified = $derived.by(() => {
-        if (selectedFilePaths.size !== defaultFilePaths.size) return true;
-        for (const path of selectedFilePaths) {
-            if (!defaultFilePaths.has(path)) return true;
-        }
-        return false;
-    });
+    // Check if rules exist (Modified if selectionRules has keys)
+    let isTreeModified = $derived(Object.keys(selectionRules).length > 0);
 
     // FIX: Converted from $derived to a pure function to avoid state_unsafe_mutation.
     // Using untrack() ensures this doesn't accidentally lock state if called during a reaction.
@@ -116,14 +114,9 @@
         const savedTmpl = [...(projectConfig.templateIds || [])].sort();
         if (JSON.stringify(currentTmpl) !== JSON.stringify(savedTmpl)) return true;
 
-        // 5. Selected Files
-        const savedFiles = projectConfig.selectedFiles || [];
-        // Quick size check
-        if (selectedFilePaths.size !== savedFiles.length) return true;
-        // Check content match
-        for (const f of savedFiles) {
-            if (!selectedFilePaths.has(f)) return true;
-        }
+        // 5. Selection Rules (Deep Compare)
+        const savedRules = projectConfig.selectionRules || {};
+        if (JSON.stringify(selectionRules) !== JSON.stringify(savedRules)) return true;
 
         return false;
     }
@@ -359,10 +352,46 @@
 
     }
 
+    // Applies Rules (Whitelist/Blacklist) to the Tree to determine what is checked
+    function recalculateVisualSelection() {
+        const newSet = new Set<string>();
+
+        // Helper to check rule hierarchy
+        const checkRule = (pathStr: string): 'include' | 'exclude' | null => {
+            let current = pathStr;
+            while(true) {
+                if (selectionRules[current]) return selectionRules[current];
+                if (current === '' || current === '.') break;
+                const parent = current.substring(0, current.lastIndexOf('/'));
+                if (parent === current) break; // Safety
+                current = parent;
+            }
+            return null;
+        };
+
+        // Iterate ALL known nodes (we need a flat list or traverse treeNodes)
+        // Since we have folderDescendants and fileTypeMap, we can iterate fileTypeMap keys
+        for (const [pathStr, type] of fileTypeMap.entries()) {
+            const ruleState = checkRule(pathStr);
+            
+            if (ruleState === 'include') {
+                newSet.add(pathStr);
+            } else if (ruleState === 'exclude') {
+                // Do not add
+            } else {
+                // No rule -> Default
+                if (defaultIncludedPaths.has(pathStr)) {
+                    newSet.add(pathStr);
+                }
+            }
+        }
+        
+        selectedFilePaths = newSet;
+    }
+
     function resetTreeSelection() {
-
-        selectedFilePaths = new Set(defaultFilePaths);
-
+        selectionRules = {};
+        recalculateVisualSelection();
     }
 
     function toggleTemplatesSection() {
@@ -613,21 +642,25 @@
 
             processNode(treeNodes, false);
 
-            // NEW: Set default baseline
+            // Set baseline (what the templates/gitignore say should be included)
 
-            defaultFilePaths = new Set(initialSet);
+            defaultIncludedPaths = new Set(initialSet);
 
-            // Apply Saved Selection if available, otherwise use default
+            // Load Rules from Config
 
-            if (projectConfig && projectConfig.selectedFiles) {
+            if (projectConfig && projectConfig.selectionRules) {
 
-                selectedFilePaths = new Set(projectConfig.selectedFiles);
+                selectionRules = { ...projectConfig.selectionRules };
 
             } else {
 
-                selectedFilePaths = initialSet;
+                selectionRules = {};
 
             }
+
+            // Apply Rules to Generate Visual Selection
+
+            recalculateVisualSelection();
 
         } catch (e) {
 
@@ -647,54 +680,28 @@
 
     }
 
-    function handleTreeToggle(path: string, isFolder: boolean, forcedState?: boolean) {
+    function handleTreeToggle(pathStr: string, isFolder: boolean, forcedState?: boolean) {
+        const currentlySelected = selectedFilePaths.has(pathStr);
+        const nextState = forcedState !== undefined ? forcedState : !currentlySelected;
 
-        const newSet = new Set(selectedFilePaths);
-
-
-
-        // Determine the new state
-
-        const nextState = forcedState !== undefined ? forcedState : !newSet.has(path);
-
-
-
-        // 1. Update the target node itself
-
-        if (nextState) newSet.add(path);
-
-        else newSet.delete(path);
-
-
-
-        // 2. If it's a folder, instantly update all descendants using the pre-calculated map
-
-        if (isFolder) {
-
-            const descendants = folderDescendants.get(path);
-
-            if (descendants) {
-
-                if (nextState) {
-
-                    for (const p of descendants) newSet.add(p);
-
-                } else {
-
-                    for (const p of descendants) newSet.delete(p);
-
-                }
-
-            }
-
+        // Update Rule
+        // Logic: We simply set the rule for this specific node. 
+        // Hierarchy logic in recalculateVisualSelection handles the children.
+        if (nextState) {
+            selectionRules[pathStr] = 'include';
+        } else {
+            selectionRules[pathStr] = 'exclude';
         }
 
+        // Optimization: Clean up redundant rules? 
+        // E.g. if I include "src", then include "src/lib", the second is redundant.
+        // For now, keep it explicit to ensure "whitelist overwrites blacklist" works if parent changes.
 
+        // Force Reactivity on rules
+        selectionRules = { ...selectionRules };
 
-        // 3. Trigger Reactivity once
-
-        selectedFilePaths = newSet;
-
+        // Update Visuals
+        recalculateVisualSelection();
     }
 
     // NEW: Handle Lazy Load
@@ -803,11 +810,11 @@
 
                         // 2. NEW: Update Default Baseline (Sync with parent's default state)
 
-                        if (defaultFilePaths.has(folderPath) && !isEffectivelyIgnored && !node.isMedia) {
+                        if (defaultIncludedPaths.has(folderPath) && !isEffectivelyIgnored && !node.isMedia) {
 
-                             defaultFilePaths.add(node.path);
+                             defaultIncludedPaths.add(node.path);
 
-                             defaultFilePaths = new Set(defaultFilePaths); // Reactivity
+                             defaultIncludedPaths = new Set(defaultIncludedPaths); // Reactivity
 
                         }
 
@@ -905,7 +912,7 @@
 
             templateIds: selectedIds,
 
-            selectedFiles: Array.from(selectedFilePaths),
+            selectionRules: selectionRules,
 
             hideIgnoredInTree: !includeIgnoredFiles,
 
@@ -954,11 +961,8 @@
         logUI('runForge initiated', mode);
 
         isProcessing = true;
-
-        // Create payload
-
-        let payloadFiles: string[] = Array.from(selectedFilePaths);
-
+        
+        // We no longer send the huge file list. We send the rules.
         try {
 
             logUI('Sending fetch request to /api/forge');
@@ -979,7 +983,7 @@
 
                     maxChars,
 
-                    selectedFiles: payloadFiles,
+                    selectionRules: selectionRules,
 
                     // UPDATED: Invert logic for backend.
                     // If "Include" is TRUE, then "Hide" is FALSE.
