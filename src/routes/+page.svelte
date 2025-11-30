@@ -126,7 +126,8 @@
 
     let treeCardElement: HTMLElement;
 
-    let fileTypeMap = new Map<string, 'file' | 'folder'>();
+    // UPDATED: Store metadata to help bulk actions filter media/ignored files
+    let fileTypeMap = new Map<string, { type: 'file' | 'folder', isMedia: boolean, isIgnored: boolean }>();
 
     let useTreeMode = $derived(treeExpanded);
 
@@ -170,7 +171,9 @@
 
         for (const path of selectedFilePaths) {
 
-            if (fileTypeMap.get(path) === 'file') {
+            const meta = fileTypeMap.get(path);
+
+            if (meta && meta.type === 'file') {
 
                 count++;
 
@@ -371,7 +374,7 @@
 
         // Iterate ALL known nodes (we need a flat list or traverse treeNodes)
         // Since we have folderDescendants and fileTypeMap, we can iterate fileTypeMap keys
-        for (const [pathStr, type] of fileTypeMap.entries()) {
+        for (const [pathStr, meta] of fileTypeMap.entries()) {
             const ruleState = checkRule(pathStr);
             
             if (ruleState === 'include') {
@@ -582,7 +585,19 @@
 
                 for (const node of nodes) {
 
-                    fileTypeMap.set(node.path, node.type);
+                    
+
+                    // UPDATED: Store full metadata
+
+                    fileTypeMap.set(node.path, { 
+
+                        type: node.type, 
+
+                        isMedia: node.isMedia, 
+
+                        isIgnored: node.isIgnored 
+
+                    });
 
                     
 
@@ -685,22 +700,69 @@
         const nextState = forcedState !== undefined ? forcedState : !currentlySelected;
 
         // Update Rule
-        // Logic: We simply set the rule for this specific node. 
-        // Hierarchy logic in recalculateVisualSelection handles the children.
         if (nextState) {
             selectionRules[pathStr] = 'include';
         } else {
             selectionRules[pathStr] = 'exclude';
         }
 
-        // Optimization: Clean up redundant rules? 
-        // E.g. if I include "src", then include "src/lib", the second is redundant.
-        // For now, keep it explicit to ensure "whitelist overwrites blacklist" works if parent changes.
+        // FIXED: When toggling a folder, we must remove explicit rules for its children.
+        // This ensures the children inherit the new parent state (Select All / Deselect All behavior).
+        if (isFolder) {
+            const prefix = pathStr + '/';
+            // We iterate keys and delete any that are children of this folder
+            for (const key of Object.keys(selectionRules)) {
+                if (key.startsWith(prefix)) {
+                    delete selectionRules[key];
+                }
+            }
+        }
 
         // Force Reactivity on rules
         selectionRules = { ...selectionRules };
 
         // Update Visuals
+        recalculateVisualSelection();
+    }
+
+    // NEW: Bulk Actions
+    function handleSelectAll() {
+        // We set explicit include rules for all valid candidates to ensure full coverage
+        // irrespective of previous blacklist rules or gitignore defaults.
+        const newRules: Record<string, 'include' | 'exclude'> = {};
+        
+        for (const [pathStr, meta] of fileTypeMap.entries()) {
+            if (meta.type === 'file' && !meta.isMedia && !meta.isIgnored) {
+                newRules[pathStr] = 'include';
+            }
+             // For folders, we can leave them implied, or set them. 
+             // Setting the root '.' to include is the clean "Select All" approach,
+             // but we want to respect the "ignore/media" constraint from the prompt.
+        }
+        
+        // Simpler approach: Reset rules, set Root to include, but Blacklist ignored/media explicitly?
+        // Actually, the most robust way to "Select All VALID candidates" is to explicit include them.
+        selectionRules = newRules;
+        recalculateVisualSelection();
+    }
+
+    function handleDeselectAll() {
+        // Simple: Exclude everything from root
+        selectionRules = { '.': 'exclude' };
+        recalculateVisualSelection();
+    }
+
+    function handleInvert() {
+        const newRules: Record<string, 'include' | 'exclude'> = {};
+        for (const [pathStr, meta] of fileTypeMap.entries()) {
+            // Only consider valid candidates (files, not media, not ignored)
+            if (meta.type === 'file' && !meta.isMedia && !meta.isIgnored) {
+                const isSelected = selectedFilePaths.has(pathStr);
+                // Invert state
+                newRules[pathStr] = isSelected ? 'exclude' : 'include';
+            }
+        }
+        selectionRules = newRules;
         recalculateVisualSelection();
     }
 
@@ -776,7 +838,19 @@
 
                     for (const node of nodes) {
 
-                        fileTypeMap.set(node.path, node.type);
+                        
+
+                        // UPDATED: Store full metadata
+
+                        fileTypeMap.set(node.path, { 
+
+                            type: node.type, 
+
+                            isMedia: node.isMedia, 
+
+                            isIgnored: node.isIgnored 
+
+                        });
 
                         
 
@@ -1756,18 +1830,26 @@
 
                             </div>
 
-                            <div class="mt-3 flex items-center gap-2 text-[10px] text-orange-200/60 bg-orange-900/10 p-3 rounded-lg border border-orange-500/10 relative z-10">
-
-                                <span class="text-orange-400 text-lg">ℹ</span>
-
-                                <p>
-
-                                    Items checked here will be <strong>merged exactly</strong> as seen. 
-
-                                    Generates <code class="bg-black/50 px-1 rounded text-orange-300">Source-Tree.txt</code>.
-
-                                </p>
-
+                            <!-- BULK ACTIONS -->
+                            <div class="mt-3 grid grid-cols-3 gap-2 relative z-10">
+                                <button 
+                                    onclick={handleSelectAll}
+                                    class="py-2 bg-slate-800 hover:bg-emerald-900/30 border border-slate-700 hover:border-emerald-500/30 text-[10px] font-bold uppercase tracking-wider text-slate-400 hover:text-emerald-400 rounded-lg transition-all"
+                                >
+                                    Select All
+                                </button>
+                                <button 
+                                    onclick={handleDeselectAll}
+                                    class="py-2 bg-slate-800 hover:bg-red-900/30 border border-slate-700 hover:border-red-500/30 text-[10px] font-bold uppercase tracking-wider text-slate-400 hover:text-red-400 rounded-lg transition-all"
+                                >
+                                    Deselect All
+                                </button>
+                                <button 
+                                    onclick={handleInvert}
+                                    class="py-2 bg-slate-800 hover:bg-orange-900/30 border border-slate-700 hover:border-orange-500/30 text-[10px] font-bold uppercase tracking-wider text-slate-400 hover:text-orange-400 rounded-lg transition-all"
+                                >
+                                    Invert
+                                </button>
                             </div>
 
                         </div>
