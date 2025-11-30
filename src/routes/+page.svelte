@@ -587,7 +587,13 @@
 
                     
 
-                    // UPDATED: Store full metadata
+                    // A node is effectively ignored if it is marked ignored OR its parent is ignored
+
+                    const isEffectivelyIgnored = node.isIgnored || parentIgnored;
+
+                    // UPDATED: Store isEffectivelyIgnored instead of node.isIgnored.
+
+                    // This ensures children of ignored folders are treated as ignored by bulk actions.
 
                     fileTypeMap.set(node.path, { 
 
@@ -595,25 +601,17 @@
 
                         isMedia: node.isMedia, 
 
-                        isIgnored: node.isIgnored 
+                        isIgnored: isEffectivelyIgnored 
 
                     });
 
-                    
-
                     // FIX: Only add to the selectable paths list if it is a folder OR a non-media file.
-
-                    // This ensures that when a parent folder is toggled, this node is included in that action ONLY if it's valid content.
 
                     if (node.type === 'folder' || !node.isMedia) {
 
                         currentLevelPaths.push(node.path); 
 
                     }
-
-                    // A node is effectively ignored if it is marked ignored OR its parent is ignored
-
-                    const isEffectivelyIgnored = node.isIgnored || parentIgnored;
 
 
 
@@ -779,12 +777,16 @@
 
         // Strategy: Explicitly INCLUDE every eligible file.
 
+        // We do not rely on inheritance; we brute force the state for every file we care about.
+
         const newRules: Record<string, 'include' | 'exclude'> = {};
         
 
         for (const [pathStr, meta] of fileTypeMap.entries()) {
 
             // STRICT FILTER: Files only, Not Media, Not Ignored
+
+            // (Note: meta.isIgnored now correctly reflects parent folders thanks to Step 1)
 
             if (meta.type === 'file' && !meta.isMedia && !meta.isIgnored) {
 
@@ -805,11 +807,32 @@
 
     function handleDeselectAll() {
 
-        // Strategy: Explicitly EXCLUDE everything from the root.
+        // Strategy: Explicitly EXCLUDE every eligible file.
 
-        // This is cleaner than looping every file to exclude it.
+        // Using a root rule like { '.': 'exclude' } was insufficient because it relies on rule hierarchy logic 
 
-        selectionRules = { '.': 'exclude' };
+        // which might be overridden or behave unexpectedly with specific existing rules.
+
+        // Brute forcing 'exclude' on every eligible file guarantees the result the user wants.
+
+        const newRules: Record<string, 'include' | 'exclude'> = {};
+        
+
+        for (const [pathStr, meta] of fileTypeMap.entries()) {
+
+            // STRICT FILTER: Only touch files we are allowed to touch
+
+            if (meta.type === 'file' && !meta.isMedia && !meta.isIgnored) {
+
+                newRules[pathStr] = 'exclude';
+
+            }
+
+        }
+
+
+
+        selectionRules = newRules;
 
         recalculateVisualSelection();
 
@@ -821,7 +844,7 @@
 
         // Strategy: Iterate every eligible file. 
 
-        // If it is currently selected -> Exclude it.
+        // If it is currently selected (in selectedFilePaths) -> Exclude it.
 
         // If it is NOT currently selected -> Include it.
 
@@ -834,6 +857,8 @@
             // STRICT FILTER
 
             if (meta.type === 'file' && !meta.isMedia && !meta.isIgnored) {
+
+                // Check visual state (Source of truth for "current" state)
 
                 const isCurrentlySelected = selectedFilePaths.has(pathStr);
 
@@ -924,7 +949,9 @@
 
                         
 
-                        // UPDATED: Store full metadata
+                        const isEffectivelyIgnored = node.isIgnored || parentIgnored;
+
+                        // UPDATED: Store isEffectivelyIgnored
 
                         fileTypeMap.set(node.path, { 
 
@@ -932,7 +959,7 @@
 
                             isMedia: node.isMedia, 
 
-                            isIgnored: node.isIgnored 
+                            isIgnored: isEffectivelyIgnored 
 
                         });
 
@@ -945,8 +972,6 @@
                             paths.push(node.path);
 
                         }
-
-                        const isEffectivelyIgnored = node.isIgnored || parentIgnored;
 
 
 
