@@ -44,15 +44,31 @@
 
             } else if (allDescendants.length > 0) {
 
+
+
+                // Count how many descendants are currently selected
+
                 const selectedCount = allDescendants.reduce((acc, path) => acc + (selectedPaths.has(path) ? 1 : 0), 0);
 
-                const totalSelected = selectedCount + (isSelfChecked ? 1 : 0);
 
-                const totalItems = allDescendants.length + 1;
 
-                isIndeterminate = totalSelected > 0 && totalSelected < totalItems;
+                // For the "Full Check", we only care if ALL descendants are selected.
 
-                isFullyChecked = totalSelected === totalItems;
+                // We do NOT add +1 (self) to the totalItems or totalSelected for this specific calculation
+
+                // because folder selection is derivative of its content in this strict mode.
+
+                // If all children are checked, the folder visually becomes checked.
+
+                
+
+                isFullyChecked = selectedCount === allDescendants.length;
+                
+                // Indeterminate if some are checked, but not all
+
+                isIndeterminate = selectedCount > 0 && !isFullyChecked;
+
+
 
             } else {
 

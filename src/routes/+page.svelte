@@ -634,12 +634,21 @@
                         // Recursively get all children paths, PASSING DOWN the ignored state
 
                         const childrenPaths = processNode(node.children, isEffectivelyIgnored);
+                        
+                        // FILTER: Only map descendants that are ELIGIBLE for selection.
+                        // This ensures the Folder Checkbox math works correctly (ignoring media/ignored files).
+                        const eligibleDescendants = childrenPaths.filter(path => {
+                            const meta = fileTypeMap.get(path);
+                            // We keep folders in the list to maintain structure, 
+                            // OR we strictly keep files. 
+                            // Best approach for "FileTreeNode.svelte" logic: Keep files only.
+                            return meta && meta.type === 'file' && !meta.isMedia && !meta.isIgnored;
+                        });
 
-                        // Map this folder path to ALL its descendants
+                        // Map this folder path to ALL its ELIGIBLE descendants
+                        folderDescendants.set(node.path, eligibleDescendants);
 
-                        folderDescendants.set(node.path, childrenPaths);
-
-                        // Add children to current level for the parent's map
+                        // Add children to current level for the parent's map (we pass everything up, filtering happens at the map set)
 
                         currentLevelPaths.push(...childrenPaths);
 
@@ -696,74 +705,149 @@
     }
 
     function handleTreeToggle(pathStr: string, isFolder: boolean, forcedState?: boolean) {
+        
+
+        // 1. Determine Target State
+        // If forcedState is provided, use it.
+        // Otherwise: logic is handled inside the component, but we need to know what to apply to children.
+        // Since this function is called "onToggle", the component has already decided we are toggling.
+        // But for folders, we need to know: Are we turning ON or OFF?
+
+        // We look at the current state of the *Folder itself* (or its descendants).
+
+        
+
+        // However, simply checking `selectedFilePaths.has(pathStr)` is reliable for the folder itself
+
+        // because `recalculateVisualSelection` adds folders to `selectedFilePaths` if their rules say so.
+
         const currentlySelected = selectedFilePaths.has(pathStr);
         const nextState = forcedState !== undefined ? forcedState : !currentlySelected;
 
-        // Update Rule
-        if (nextState) {
-            selectionRules[pathStr] = 'include';
-        } else {
-            selectionRules[pathStr] = 'exclude';
-        }
 
-        // FIXED: When toggling a folder, we must remove explicit rules for its children.
-        // This ensures the children inherit the new parent state (Select All / Deselect All behavior).
+
+        const newRules = { ...selectionRules };
+
+
+
         if (isFolder) {
-            const prefix = pathStr + '/';
-            // We iterate keys and delete any that are children of this folder
-            for (const key of Object.keys(selectionRules)) {
-                if (key.startsWith(prefix)) {
-                    delete selectionRules[key];
-                }
+
+            // FOLDER LOGIC: "Master Switch"
+
+            // We explicitly set the rule for every ELIGIBLE descendant.
+
+            // This overrides any previous inheritance or mixed states.
+
+            const descendants = folderDescendants.get(pathStr) || [];
+            
+
+            // Apply rule to the folder itself (for good measure)
+
+            newRules[pathStr] = nextState ? 'include' : 'exclude';
+
+
+
+            for (const childPath of descendants) {
+
+                // Descendants in 'folderDescendants' are already filtered to be eligible (see processNode updates)
+
+                newRules[childPath] = nextState ? 'include' : 'exclude';
+
             }
+
+        } else {
+
+            // FILE LOGIC
+
+            newRules[pathStr] = nextState ? 'include' : 'exclude';
+
         }
 
-        // Force Reactivity on rules
-        selectionRules = { ...selectionRules };
 
-        // Update Visuals
+
+        selectionRules = newRules;
+
         recalculateVisualSelection();
+
     }
 
-    // NEW: Bulk Actions
+    // --- BULK ACTIONS ---
+
+
+
     function handleSelectAll() {
-        // We set explicit include rules for all valid candidates to ensure full coverage
-        // irrespective of previous blacklist rules or gitignore defaults.
+
+        // Strategy: Explicitly INCLUDE every eligible file.
+
         const newRules: Record<string, 'include' | 'exclude'> = {};
         
+
         for (const [pathStr, meta] of fileTypeMap.entries()) {
+
+            // STRICT FILTER: Files only, Not Media, Not Ignored
+
             if (meta.type === 'file' && !meta.isMedia && !meta.isIgnored) {
+
                 newRules[pathStr] = 'include';
+
             }
-             // For folders, we can leave them implied, or set them. 
-             // Setting the root '.' to include is the clean "Select All" approach,
-             // but we want to respect the "ignore/media" constraint from the prompt.
+
         }
         
-        // Simpler approach: Reset rules, set Root to include, but Blacklist ignored/media explicitly?
-        // Actually, the most robust way to "Select All VALID candidates" is to explicit include them.
+
         selectionRules = newRules;
+
         recalculateVisualSelection();
+
     }
+
+
 
     function handleDeselectAll() {
-        // Simple: Exclude everything from root
+
+        // Strategy: Explicitly EXCLUDE everything from the root.
+
+        // This is cleaner than looping every file to exclude it.
+
         selectionRules = { '.': 'exclude' };
+
         recalculateVisualSelection();
+
     }
 
+
+
     function handleInvert() {
+
+        // Strategy: Iterate every eligible file. 
+
+        // If it is currently selected -> Exclude it.
+
+        // If it is NOT currently selected -> Include it.
+
         const newRules: Record<string, 'include' | 'exclude'> = {};
+
+
+
         for (const [pathStr, meta] of fileTypeMap.entries()) {
-            // Only consider valid candidates (files, not media, not ignored)
+
+            // STRICT FILTER
+
             if (meta.type === 'file' && !meta.isMedia && !meta.isIgnored) {
-                const isSelected = selectedFilePaths.has(pathStr);
-                // Invert state
-                newRules[pathStr] = isSelected ? 'exclude' : 'include';
+
+                const isCurrentlySelected = selectedFilePaths.has(pathStr);
+
+                newRules[pathStr] = isCurrentlySelected ? 'exclude' : 'include';
+
             }
+
         }
+        
+
         selectionRules = newRules;
+
         recalculateVisualSelection();
+
     }
 
     // NEW: Handle Lazy Load
@@ -895,8 +979,14 @@
                         if (node.type === 'folder' && node.children) {
 
                             const kids = processNode(node.children, isEffectivelyIgnored);
+                            
+                            // FILTER for Lazy Load too
+                            const eligibleDescendants = kids.filter(path => {
+                                const meta = fileTypeMap.get(path);
+                                return meta && meta.type === 'file' && !meta.isMedia && !meta.isIgnored;
+                            });
 
-                            folderDescendants.set(node.path, kids);
+                            folderDescendants.set(node.path, eligibleDescendants);
 
                             paths.push(...kids);
 
