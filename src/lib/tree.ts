@@ -203,13 +203,17 @@ export async function scanDirectory(
 /**
  * Generates a visual tree string for the Source-Tree.txt file
  */
-export function generateTreeString(nodes: TreeNode[], selectedPaths: Set<string>, prefix = ''): string {
+export function generateTreeString(
+    nodes: TreeNode[], 
+    // selectedPaths determines VISIBILITY in the tree (structure)
+    selectedPaths: Set<string>, 
+    // includedContentPaths determines the STATUS MARKER (✓/✕)
+    includedContentPaths: Set<string>,
+    prefix = ''
+): string {
     let output = '';
 
-    // Filter nodes that are effectively enabled
-    // A node is visible if it is in selectedPaths OR if it's a folder that contains selected paths
-    // However, for Source-Tree.txt, we usually just want to show exactly what is enabled.
-
+    // Filter nodes that are effectively visible in the tree map
     const validNodes = nodes.filter(n => selectedPaths.has(n.path));
 
     for (let i = 0; i < validNodes.length; i++) {
@@ -217,9 +221,22 @@ export function generateTreeString(nodes: TreeNode[], selectedPaths: Set<string>
         const isLast = i === validNodes.length - 1;
         const connector = isLast ? '└── ' : '├── ';
         const childPrefix = isLast ? '    ' : '│   ';
-        output += prefix + connector + node.name + (node.type === 'folder' ? '/' : '') + '\n';
+        
+        // Determine suffix
+        let suffix = '';
+        if (node.type === 'file') {
+            // Check if this specific file ended up in the processed list
+            if (includedContentPaths.has(node.path)) {
+                suffix = '  [✓]'; // Included in merged text
+            } else {
+                suffix = '  [✕]'; // Excluded (Binary, huge, or rule excluded)
+            }
+        }
+
+        output += prefix + connector + node.name + (node.type === 'folder' ? '/' : '') + suffix + '\n';
+        
         if (node.children && node.children.length > 0) {
-            output += generateTreeString(node.children, selectedPaths, prefix + childPrefix);
+            output += generateTreeString(node.children, selectedPaths, includedContentPaths, prefix + childPrefix);
         }
     }
     return output;

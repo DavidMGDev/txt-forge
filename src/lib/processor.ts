@@ -624,7 +624,6 @@ export async function processFiles(config: ProcessConfig): Promise<ProcessResult
         // --- DETERMINE FILES TO PROCESS (OFFLOADED LOGIC) ---
 
         let filesToProcess: string[] = [];
-        let filesForTree: string[] = []; // Separate list for the visual tree
 
         // 1. Setup Ignores
 
@@ -650,21 +649,27 @@ export async function processFiles(config: ProcessConfig): Promise<ProcessResult
         // If they do, scanFiles needs to know, but for stability, we stick to standard scan + filter.
         
         const validExtensions = new Set<string>();
-        // If specific templates selected, collect extensions. If none/auto, allow all (extension filtering happens later if needed)
+        // If specific templates selected, collect extensions.
         activeTemplates.forEach(t => t.extensions.forEach(ext => validExtensions.add(ext)));
         
         // Scan everything (recursively), filtering binaries by default
+        // CHANGE: We pass [] as extensions to scanFiles so it returns ALL files.
+        // This ensures files NOT in the template extension list are still found, so the Rules Engine can decide their fate.
         const allCandidates = await scanFiles(sourceRoot, sourceRoot, [], Array.from(ignorePatterns), false);
 
         const rules = config.selectionRules || {};
         const explicitFiles = new Set<string>();
 
+        // We also need a set of relative paths that are included, to pass to the Tree Generator for the [✓] indicators
+        const includedRelativePaths = new Set<string>();
+
         for (const fullPath of allCandidates) {
             const relPath = path.relative(sourceRoot, fullPath).split(path.sep).join('/');
             
             // Determine "Default State" for this file
-            // If templates are active, default state depends on extension match
-            // If no templates (generic mode), default is TRUE (since it passed scanFiles)
+            // If templates are active, default state depends on extension match.
+            // If the file extension is NOT in the template, it is Ignored By Default.
+            // BUT, if the user has a Rule saying "Include", isFileIncluded will return true.
             let isIgnoredByDefault = false;
             if (activeTemplates.length > 0) {
                 const ext = path.extname(fullPath).toLowerCase();
@@ -676,32 +681,95 @@ export async function processFiles(config: ProcessConfig): Promise<ProcessResult
 
             if (shouldInclude) {
                 explicitFiles.add(fullPath);
+                includedRelativePaths.add(relPath);
             }
         }
 
         filesToProcess = Array.from(explicitFiles);
 
         // 3. Determine Tree Files (The Visual Map)
+        // We need to build the Tree Nodes data structure to pass to generateTreeString
+        // We use the same 'scanDirectory' logic from tree.ts but we do it manually via a simpler scan here or reuse scanFiles
+        // actually, we need the TreeNode structure.
+
+        // To generate the pretty tree with [✓], we need the full file list available to the tree generator.
+        let treeScanFiles: string[] = [];
+
         if (!config.hideIgnoredInTree) {
             // If "Hide" is FALSE (Default): We want the broad scan (show context).
-            // UPDATED: Pass 'true' for includeBinaries so .png, .wav etc appear in the tree map
             const massiveIgnores = Array.from(massiveFolders);
-            // We also ensure *.import is in massiveIgnores logic if not already implicitly handled,
-            // but better to concat the global ignorePatterns to be safe, or just rely on the fact that
-            // scanFiles checks ignores.
-            // To be safe for .import and .uid files in the tree, we add them to this specific call's ignore list:
             massiveIgnores.push('*.import');
             massiveIgnores.push('*.uid');
-
-            filesForTree = await scanFiles(sourceRoot, sourceRoot, [], massiveIgnores, true);
+            // Scan for ALL files for the tree map
+            treeScanFiles = await scanFiles(sourceRoot, sourceRoot, [], massiveIgnores, true);
         } else {
-            // If "Hide" is TRUE: Tree matches content exactly (clean tree).
-            filesForTree = [...filesToProcess];
+            // If "Hide" is TRUE: Tree matches content exactly.
+            treeScanFiles = [...filesToProcess];
         }
 
-        // Sort tree alphabetically for display
-        filesForTree.sort();
-        const sourceTreeContent = filesForTree.map(f => path.relative(sourceRoot, f)).join('\n');
+        // Sort tree alphabetically
+        treeScanFiles.sort();
+
+        // CONVERT FLAT FILES TO TREE NODES
+        // We need to reconstruct a simple TreeNode structure from the flat file list to use generateTreeString
+        // This is a lightweight reconstruction
+        const rootNodes: TreeNode[] = [];
+        const pathMap = new Map<string, TreeNode>();
+
+        for (const file of treeScanFiles) {
+            const relPath = path.relative(sourceRoot, file).split(path.sep).join('/');
+            const parts = relPath.split('/');
+            
+            let currentPath = '';
+            let currentChildren = rootNodes;
+
+            for (let i = 0; i < parts.length; i++) {
+                const part = parts[i];
+                const isFile = i === parts.length - 1;
+                currentPath = currentPath ? `${currentPath}/${part}` : part;
+
+                let node = pathMap.get(currentPath);
+                if (!node) {
+                    node = {
+                        name: part,
+                        path: currentPath,
+                        type: isFile ? 'file' : 'folder',
+                        children: isFile ? undefined : [],
+                        isIgnored: false,
+                        isMedia: false,
+                        isMassive: false,
+                        depth: i
+                    };
+                    pathMap.set(currentPath, node);
+                    currentChildren.push(node);
+                    
+                    // Sort as we insert? Or sort after. Sort after is easier.
+                }
+                
+                if (!isFile && node.children) {
+                    currentChildren = node.children;
+                }
+            }
+        }
+
+        // Helper to sort nodes
+        const sortNodes = (nodes: TreeNode[]) => {
+            nodes.sort((a, b) => {
+                if (a.type === b.type) return a.name.localeCompare(b.name);
+                return a.type === 'folder' ? -1 : 1;
+            });
+            nodes.forEach(n => {
+                if (n.children) sortNodes(n.children);
+            });
+        };
+        sortNodes(rootNodes);
+
+        // Generate Tree String with Indicators
+        // We pass the set of ALL files in the tree as "selected" (so they show up)
+        // And we pass includedRelativePaths as the content indicator
+        const allTreePaths = new Set(treeScanFiles.map(f => path.relative(sourceRoot, f).split(path.sep).join('/')));
+        
+        const sourceTreeContent = generateTreeString(rootNodes, allTreePaths, includedRelativePaths);
 
         if (filesToProcess.length === 0) return { success: false, message: "No matching files found.", outputPath: '', files: [] };
 
