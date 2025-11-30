@@ -229,7 +229,7 @@ export function generateTreeString(
             if (includedContentPaths.has(node.path)) {
                 suffix = '  [✓]'; // Included in merged text
             } else {
-                suffix = '  [✕]'; // Excluded (Binary, huge, or rule excluded)
+                suffix = '  [-]'; // Excluded (Binary, huge, or rule excluded)
             }
         }
 

@@ -826,11 +826,15 @@ export async function processFiles(config: ProcessConfig): Promise<ProcessResult
 
         const treeBody = sourceTreeContent.trim();
         const indentedBody = treeBody.split('\n').map(line => '│   ' + line).join('\n');
-        const finalTreeContent = `repository/\n${indentedBody}`;
+        // CONSTRUCT STANDARDIZED HEADER & LEGEND
+        const header = "--- PROJECT STRUCTURE ---\n";
+        const legend = "Legend: [✓] Included in merged content, [-] Excluded from merged content\n";
+        const finalTreeContent = `${header}${legend}repository/\n${indentedBody}`;
 
         let generatedFiles: string[] = [];
         if (config.disableSplitting) {
-            // Single File Mode: Pass tree content, do NOT write separate file
+            // Single File Mode: Pass FULL tree content (Header+Legend+Tree)
+            // Note: We updated mergeFiles to NOT prepend the header anymore.
             generatedFiles = await mergeFiles(fileMap, mergedDir, config.maxChars, true, finalTreeContent);
         } else {
             // Normal Mode: Write separate tree file
@@ -995,7 +999,7 @@ async function mergeFiles(
         // Start with the Tree content if provided
         let fullContent = "";
         if (treeContent) {
-            fullContent += "--- PROJECT STRUCTURE ---\n";
+            // NOTE: The caller (processFiles) now provides the Header and Legend inside treeContent.
             fullContent += treeContent;
             fullContent += "\n" + "=".repeat(50) + "\n\n";
         }
