@@ -55,22 +55,32 @@ Skip the browser and instantly convert your project using auto-detection:
 ```bash
 # Auto-detect and save to ./TXT-Forge/ folder
 txt-forge --auto
+# Short alias:
+txt-forge -a
 
 # Save to Global Vault instead (~/.txt-forge-vault)
 txt-forge -a --vault
+# Short alias:
+txt-forge -a -v
 
 # Save to a specific custom path
 txt-forge -a --custom "C:/Users/Dev/Desktop/MyContext"
-
-# or short alias:
+# Short alias:
 txt-forge -a -c "./my-output"
 
 # Include ignored files (like package-lock.json) in the Source Tree map
 # (Useful for giving AI context on dependencies without including the file content)
-txt-forge -a --ignored
+txt-forge -a --ignore
+# Short alias:
+txt-forge -a -i
 
-# Combine flags (Auto + Custom Path + Ignored)
-txt-forge -a -i -c "./output"
+# Single File Mode (Disable splitting into multiple files)
+txt-forge -a --single
+# Short alias:
+txt-forge -a -s
+
+# Combine flags (Auto + Vault + Single File)
+txt-forge -a -v -s
 ```
 
 ## 📄 Output Format
