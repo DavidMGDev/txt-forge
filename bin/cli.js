@@ -21,6 +21,8 @@ const isDebug = args.includes('--debug') || args.includes('-d');
 const isAuto = args.includes('--auto') || args.includes('-a');
 const isVault = args.includes('--vault') || args.includes('--global') || args.includes('-v');
 const isHidden = args.includes('--ignore') || args.includes('-i');
+// New Flag: Single File Mode
+const isSingleFile = args.includes('--single') || args.includes('-s');
 
 // Custom Path Parsing
 let customPath = null;
@@ -34,9 +36,10 @@ if (customFlagIndex > -1 && args[customFlagIndex + 1]) {
 
 if (!isAuto) {
     console.log('\x1b[36m%s\x1b[0m', '› Initializing TXT-Forge...');
+    if (isSingleFile) console.log('\x1b[90m%s\x1b[0m', '  Mode: Single File Output (Splitting Disabled)');
 } else {
     console.log('\x1b[36m%s\x1b[0m', '› TXT-Forge Auto-Mode Initiated...');
-    console.log('\x1b[90m%s\x1b[0m', `  Options: [Vault: ${isVault}] [Ignored Files: ${isHidden ? 'HIDDEN' : 'VISIBLE'}]`);
+    console.log('\x1b[90m%s\x1b[0m', `  Options: [Vault: ${isVault}] [Ignored: ${isHidden ? 'HIDDEN' : 'VISIBLE'}] [Single File: ${isSingleFile}]`);
 }
 
 if (isDebug) console.log('\x1b[33m%s\x1b[0m', '› Debug Mode Enabled');
@@ -50,15 +53,15 @@ async function killPort(port) {
         exec(command, (err, stdout) => {
             if (!stdout) return resolve();
             console.log('\x1b[90m%s\x1b[0m', '› Preparing local network environment...');
-            
+
             if (isWin) {
-                 const lines = stdout.trim().split('\n');
-                 const pid = lines[0].trim().split(/\s+/).pop();
-                 if(pid && pid !== '0') exec(`taskkill /PID ${pid} /F`, () => setTimeout(resolve, 200));
-                 else resolve();
+                const lines = stdout.trim().split('\n');
+                const pid = lines[0].trim().split(/\s+/).pop();
+                if (pid && pid !== '0') exec(`taskkill /PID ${pid} /F`, () => setTimeout(resolve, 200));
+                else resolve();
             } else {
                 const pid = stdout.trim();
-                if(pid) exec(`kill -9 ${pid}`, () => setTimeout(resolve, 200));
+                if (pid) exec(`kill -9 ${pid}`, () => setTimeout(resolve, 200));
                 else resolve();
             }
         });
@@ -70,7 +73,7 @@ async function startServer() {
 
     // In auto mode, we pipe stdout to 'ignore' unless debug
     const stdioConfig = (isAuto && !isDebug) ? ['ignore', 'ignore', 'inherit'] : 'inherit';
-    
+
     const server = spawn('node', [serverPath], {
         env: {
             ...process.env,
@@ -79,7 +82,9 @@ async function startServer() {
             ORIGIN: `http://localhost:${PORT}`,
             FORGE_SESSION_ID: SESSION_ID,
             node_env: 'production',
-            TXT_FORGE_DEBUG: isDebug ? 'true' : 'false'
+            TXT_FORGE_DEBUG: isDebug ? 'true' : 'false',
+            // Pass the new flags
+            TXT_FORGE_SINGLE: isSingleFile ? 'true' : 'false'
         },
         stdio: stdioConfig
     });
@@ -111,15 +116,15 @@ async function startServer() {
                         console.log('\x1b[33m%s\x1b[0m', '⚠ Warning: Project config reset due to version update.');
                     }
                     if (result.updateInfo && result.updateInfo.isUpdateAvailable) {
-                         console.log('\x1b[35m%s\x1b[0m', `➜ Update Available: ${result.updateInfo.latest} (Current: ${result.updateInfo.current})`);
-                         console.log('\x1b[90m%s\x1b[0m', '  Run "npm install -g txt-forge" to update.');
+                        console.log('\x1b[35m%s\x1b[0m', `➜ Update Available: ${result.updateInfo.latest} (Current: ${result.updateInfo.current})`);
+                        console.log('\x1b[90m%s\x1b[0m', '  Run "npm install -g txt-forge" to update.');
                     }
                     console.log('\x1b[90m%s\x1b[0m', `  Detected: ${result.detectedIds.join(', ') || 'None'}`);
                     console.log('\x1b[36m%s\x1b[0m', `  Output:   ${result.outputPath}`);
                     console.log('\x1b[90m%s\x1b[0m', `  Generated ${result.files.length} file(s).`);
                     try {
                         await open(result.outputPath);
-                    } catch (openErr) {}
+                    } catch (openErr) { }
                 } else {
                     console.error('\x1b[31m%s\x1b[0m', '✕ Error:', result.message);
                 }

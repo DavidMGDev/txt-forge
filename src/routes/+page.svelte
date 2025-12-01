@@ -201,7 +201,7 @@
 
         }, 100);
 
-        window.addEventListener('beforeunload', handleUnload);
+        // REMOVED: window.addEventListener('beforeunload', handleUnload);
         
         // Start Heartbeat (every 2 seconds)
         healthInterval = setInterval(async () => {
@@ -212,6 +212,7 @@
                 const controller = new AbortController();
                 const id = setTimeout(() => controller.abort(), 2000);
                 
+                // This call keeps the server process alive via src/lib/server/session.ts
                 const res = await fetch('/api/health', { signal: controller.signal });
                 clearTimeout(id);
 
@@ -228,26 +229,11 @@
 
     onDestroy(() => {
         if (healthInterval) clearInterval(healthInterval);
-        if (typeof window !== 'undefined') window.removeEventListener('beforeunload', handleUnload);
+        if (healthInterval) clearInterval(healthInterval);
+        // REMOVED: if (typeof window !== 'undefined') window.removeEventListener('beforeunload', handleUnload);
     });
 
-    function handleUnload() {
-
-        if (!sessionId) return;
-
-        fetch('/api/shutdown', {
-
-            method: 'POST',
-
-            headers: { 'Content-Type': 'application/json' },
-
-            body: JSON.stringify({ sessionId }),
-
-            keepalive: true
-
-        });
-
-    }
+    // REMOVED: function handleUnload() { ... }
 
     async function detect() {
 

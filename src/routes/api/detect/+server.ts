@@ -17,12 +17,25 @@ export async function GET() {
 
     // 3. Check for updates (Non-blocking ideal, but for simplicity we await fast)
     const updateInfo = await checkForUpdate();
-    const shouldShowUpdate = updateInfo && 
-                             updateInfo.isUpdateAvailable && 
-                             config.lastSkippedVersion !== updateInfo.latest;
+    const shouldShowUpdate = updateInfo &&
+        updateInfo.isUpdateAvailable &&
+        config.lastSkippedVersion !== updateInfo.latest;
 
     // 4. Calculate Global Vault Path for display
     const globalPath = path.join(os.homedir(), '.txt-forge-vault');
+
+    // 5. Check for CLI Overrides
+    const isSingleFileOverride = process.env.TXT_FORGE_SINGLE === 'true';
+
+    // If override is active, force it into the project config sent to frontend
+    if (isSingleFileOverride) {
+        if (!projectConfig) {
+            // @ts-ignore
+            projectConfig = { disableSplitting: true };
+        } else {
+            projectConfig.disableSplitting = true;
+        }
+    }
 
     return json({
         ...result,
