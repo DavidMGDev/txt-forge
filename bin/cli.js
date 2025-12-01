@@ -17,14 +17,14 @@ const SESSION_ID = randomUUID();
 // --- Argument Parsing ---
 const args = process.argv.slice(2);
 const isDebug = args.includes('--debug') || args.includes('-d');
-// Auto Mode Flags
 const isAuto = args.includes('--auto') || args.includes('-a');
-const isVault = args.includes('--vault') || args.includes('--global') || args.includes('-v');
-const isHidden = args.includes('--ignore') || args.includes('-i');
-// New Flag: Single File Mode
-const isSingleFile = args.includes('--single') || args.includes('-s');
 
-// Custom Path Parsing
+// Flags are ONLY active if Auto Mode is enabled
+const isVault = isAuto && (args.includes('--vault') || args.includes('--global') || args.includes('-v'));
+const isHidden = isAuto && (args.includes('--ignore') || args.includes('-i'));
+const isSingleFile = isAuto && (args.includes('--single') || args.includes('-s'));
+
+// Custom Path Parsing (Allowed in both modes)
 let customPath = null;
 const customFlagIndex = args.indexOf('--custom') > -1 ? args.indexOf('--custom') : args.indexOf('-c');
 if (customFlagIndex > -1 && args[customFlagIndex + 1]) {
@@ -36,10 +36,18 @@ if (customFlagIndex > -1 && args[customFlagIndex + 1]) {
 
 if (!isAuto) {
     console.log('\x1b[36m%s\x1b[0m', '› Initializing TXT-Forge...');
-    if (isSingleFile) console.log('\x1b[90m%s\x1b[0m', '  Mode: Single File Output (Splitting Disabled)');
+    // In UI mode, flags are ignored, so we don't log them.
 } else {
     console.log('\x1b[36m%s\x1b[0m', '› TXT-Forge Auto-Mode Initiated...');
-    console.log('\x1b[90m%s\x1b[0m', `  Options: [Vault: ${isVault}] [Ignored: ${isHidden ? 'HIDDEN' : 'VISIBLE'}] [Single File: ${isSingleFile}]`);
+    // Removed [Ignored: VISIBLE] as requested. Only showing active overrides.
+    const activeOptions = [];
+    if (isVault) activeOptions.push('Vault Save');
+    if (isHidden) activeOptions.push('Hide Ignored');
+    if (isSingleFile) activeOptions.push('Single File');
+
+    if (activeOptions.length > 0) {
+        console.log('\x1b[90m%s\x1b[0m', `  Overrides: [${activeOptions.join(', ')}]`);
+    }
 }
 
 if (isDebug) console.log('\x1b[33m%s\x1b[0m', '› Debug Mode Enabled');
@@ -78,13 +86,14 @@ async function startServer() {
         env: {
             ...process.env,
             PORT: PORT.toString(),
-            TXT_FORGE_CWD: USER_CWD, // Pass initial CWD
+            TXT_FORGE_CWD: USER_CWD,
             ORIGIN: `http://localhost:${PORT}`,
             FORGE_SESSION_ID: SESSION_ID,
             node_env: 'production',
-            TXT_FORGE_DEBUG: isDebug ? 'true' : 'false',
-            // Pass the new flags
-            TXT_FORGE_SINGLE: isSingleFile ? 'true' : 'false'
+            TXT_FORGE_DEBUG: isDebug ? 'true' : 'false'
+            // REMOVED TXT_FORGE_SINGLE from env. 
+            // We now pass strict control flags via the API body for auto mode.
+            // UI mode ignores them completely.
         },
         stdio: stdioConfig
     });
@@ -103,6 +112,7 @@ async function startServer() {
                     body: JSON.stringify({
                         saveToVault: isVault,
                         hideIgnoredInTree: isHidden,
+                        isSingleFile: isSingleFile, // Pass the flag here
                         customPath: customPath
                     })
                 });

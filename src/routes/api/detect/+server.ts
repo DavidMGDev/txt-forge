@@ -25,17 +25,7 @@ export async function GET() {
     const globalPath = path.join(os.homedir(), '.txt-forge-vault');
 
     // 5. Check for CLI Overrides
-    const isSingleFileOverride = process.env.TXT_FORGE_SINGLE === 'true';
-
-    // If override is active, force it into the project config sent to frontend
-    if (isSingleFileOverride) {
-        if (!projectConfig) {
-            // @ts-ignore
-            projectConfig = { disableSplitting: true };
-        } else {
-            projectConfig.disableSplitting = true;
-        }
-    }
+    // (REMOVED: CLI Overrides Logic. UI Mode does not accept -s, -i, or -v flags)
 
     return json({
         ...result,
