@@ -18,11 +18,16 @@
     // New state: Detect if we have forced ignored files to be checked
     let isForceChecked = false;
 
+    // FIX: Determine if the node has ANY selectable content (Files or Massive state)
+    // If allDescendants is empty AND it is not Massive, it effectively contains only media (or is truly empty).
+    $: hasContent = node.type === 'file' || node.isMassive || (folderDescendants.get(node.path)?.length || 0) > 0;
+
     $: {
         if (node.type === "folder") {
             const allDescendants = folderDescendants.get(node.path) || [];
 
-            if (allDescendants.length === 0 && node.isMassive) {
+            if (node.isMassive && allDescendants.length === 0) {
+                // Massive folders not yet loaded are binary: either we forced them, or we didn't.
                 isFullyChecked = isSelfChecked;
                 isIndeterminate = false;
             } else if (allDescendants.length > 0) {
@@ -31,19 +36,13 @@
                     0,
                 );
 
-                // Pure Math: 100% selected?
                 isFullyChecked = selectedCount === allDescendants.length;
-
-                // Indeterminate: >0% but <100%
                 isIndeterminate = selectedCount > 0 && !isFullyChecked;
-
-                // Force Check Detection:
-                // If it is fully checked, AND the folder itself is effectively an ignored folder (or contains them),
-                // we want to visually style it differently.
-                // However, for simplicity, "Fully Checked" (Green/Solid) implies Force Check if ignored files exist.
-                // We will rely on isFullyChecked for the checkmark, but use CSS to distinguish partials.
             } else {
-                isFullyChecked = isSelfChecked;
+                // Folder has no text files (likely only media). 
+                // It should NEVER look selected.
+                isFullyChecked = false;
+                isIndeterminate = false;
             }
         } else {
             isFullyChecked = isSelfChecked;
@@ -119,23 +118,25 @@
         <button
             onclick={(e) => {
                 e.stopPropagation();
-                if (!node.isMedia) handleToggle();
+                if (hasContent && !node.isMedia) handleToggle();
             }}
-            disabled={node.isMedia}
-            title={node.isMedia
-                ? "Media files excluded"
-                : isFullyChecked
-                  ? "Click to Deselect All"
-                  : isIndeterminate
-                    ? "Click to Force Select All (including ignored)"
-                    : "Click to Smart Select"}
+            disabled={node.isMedia || !hasContent}
+            title={!hasContent 
+                ? "No text files in folder"
+                : node.isMedia
+                    ? "Media files excluded"
+                    : isFullyChecked
+                        ? "Click to Deselect All"
+                        : isIndeterminate
+                            ? "Click to Force Select All (including ignored)"
+                            : "Click to Smart Select"}
             class="w-4 h-4 rounded border flex items-center justify-center transition-all duration-200 group/cb relative
-            {node.isMedia
-                ? 'bg-slate-800 border-slate-800 opacity-30 cursor-not-allowed'
+            {!hasContent || node.isMedia
+                ? 'bg-slate-800 border-slate-800 opacity-20 cursor-not-allowed'
                 : isFullyChecked
-                  ? 'bg-emerald-600 border-emerald-500 text-white shadow-[0_0_8px_rgba(16,185,129,0.4)] hover:bg-red-500 hover:border-red-400 hover:shadow-red-500/20'
+                  ? 'bg-orange-500 border-orange-500 text-white shadow-[0_0_8px_rgba(249,115,22,0.4)] hover:bg-red-500 hover:border-red-500 hover:shadow-red-500/20'
                   : isIndeterminate
-                    ? 'bg-orange-600 border-orange-500 text-white shadow-[0_0_8px_rgba(249,115,22,0.4)] hover:bg-emerald-600 hover:border-emerald-500 hover:shadow-emerald-500/20'
+                    ? 'bg-slate-900 border-orange-500 text-orange-500 shadow-[0_0_5px_rgba(249,115,22,0.2)] hover:bg-orange-500 hover:text-white hover:shadow-orange-500/30'
                     : 'border-slate-700 bg-slate-900/50 hover:border-orange-500 hover:bg-orange-500/20'}"
         >
             {#if isFullyChecked}
@@ -152,7 +153,7 @@
                         d="M5 13l4 4L19 7"
                     ></path></svg
                 >
-                <!-- X icon on hover -->
+                <!-- X icon on hover (Red Background) -->
                 <svg
                     class="w-3 h-3 absolute inset-0 m-auto opacity-0 group-hover/cb:opacity-100 transition-opacity"
                     fill="none"
@@ -166,11 +167,11 @@
                     ></path></svg
                 >
             {:else if isIndeterminate}
-                <!-- Dash -->
+                <!-- Dash (Orange) -->
                 <div
-                    class="w-2.5 h-0.5 bg-white rounded-full shadow-sm group-hover/cb:opacity-0 transition-opacity"
+                    class="w-2.5 h-0.5 bg-orange-500 rounded-full shadow-sm group-hover/cb:opacity-0 transition-opacity"
                 ></div>
-                <!-- Checkmark on hover (indicating next state is Full) -->
+                <!-- Checkmark on hover (Filling the box Orange) -->
                 <svg
                     class="w-3 h-3 absolute inset-0 m-auto opacity-0 group-hover/cb:opacity-100 transition-opacity"
                     fill="none"
@@ -240,7 +241,7 @@
                 <!-- If it's ignored but checked, show a different style to warn user -->
                 {#if isFullyChecked || isSelfChecked}
                     <span
-                        class="ml-2 text-[9px] uppercase border border-emerald-900/50 text-emerald-400/80 px-1.5 rounded bg-emerald-950/30"
+                        class="ml-2 text-[9px] uppercase border border-orange-900/50 text-orange-400/80 px-1.5 rounded bg-orange-950/30"
                         >Force Included</span
                     >
                 {:else}

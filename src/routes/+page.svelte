@@ -635,13 +635,24 @@
             const currentlySelected = selectedFilePaths.has(pathStr);
             newRules[pathStr] = currentlySelected ? "exclude" : "include";
         } else {
-            // FOLDER LOGIC: 3-State Cycle
-            // State 0 (Empty): Nothing selected -> Click -> State 1
-            // State 1 (Smart): Only non-ignored selected -> Click -> State 2
-            // State 2 (Full): Everything (incl ignored) selected -> Click -> State 0
-
             const descendants = folderDescendants.get(pathStr) || [];
+            
+            // SPECIAL CASE: Massive Folder (Unloaded)
+            // If the map has no descendants, but it is a folder, check if it's the Massive case.
+            // We rely on the fact that if it has no descendants mapped, we treat it as a simple binary toggle.
+            if (descendants.length === 0) {
+                 // Check if the folder ITSELF is selected in our set
+                 const isCurrentlySelected = selectedFilePaths.has(pathStr);
+                 // Simple Toggle: If selected -> Exclude. If not -> Include.
+                 newRules[pathStr] = isCurrentlySelected ? "exclude" : "include";
+                 
+                 selectionRules = newRules;
+                 recalculateVisualSelection();
+                 return;
+            }
 
+            // FOLDER LOGIC: 3-State Cycle (Smart -> Force -> Clear)
+            
             // 1. Analyze Current State
             let countSelected = 0;
             let countIgnoredButSelected = 0;
