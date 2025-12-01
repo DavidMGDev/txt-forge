@@ -716,6 +716,10 @@ export async function processFiles(config: ProcessConfig): Promise<ProcessResult
         const rootNodes: TreeNode[] = [];
         const pathMap = new Map<string, TreeNode>();
 
+        // NEW: Track all paths (files AND folders) that should appear in the tree.
+        // scanFiles only gives us files, so we must manually add the folder paths as we traverse.
+        const visibleTreePaths = new Set<string>();
+
         for (const file of treeScanFiles) {
             const relPath = path.relative(sourceRoot, file).split(path.sep).join('/');
             const parts = relPath.split('/');
@@ -727,6 +731,9 @@ export async function processFiles(config: ProcessConfig): Promise<ProcessResult
                 const part = parts[i];
                 const isFile = i === parts.length - 1;
                 currentPath = currentPath ? `${currentPath}/${part}` : part;
+
+                // CRITICAL FIX: Add this path (folder or file) to the visible set
+                visibleTreePaths.add(currentPath);
 
                 let node = pathMap.get(currentPath);
                 if (!node) {
@@ -742,8 +749,6 @@ export async function processFiles(config: ProcessConfig): Promise<ProcessResult
                     };
                     pathMap.set(currentPath, node);
                     currentChildren.push(node);
-                    
-                    // Sort as we insert? Or sort after. Sort after is easier.
                 }
                 
                 if (!isFile && node.children) {
@@ -765,11 +770,8 @@ export async function processFiles(config: ProcessConfig): Promise<ProcessResult
         sortNodes(rootNodes);
 
         // Generate Tree String with Indicators
-        // We pass the set of ALL files in the tree as "selected" (so they show up)
-        // And we pass includedRelativePaths as the content indicator
-        const allTreePaths = new Set(treeScanFiles.map(f => path.relative(sourceRoot, f).split(path.sep).join('/')));
-        
-        const sourceTreeContent = generateTreeString(rootNodes, allTreePaths, includedRelativePaths);
+        // We pass visibleTreePaths (which now includes folders) so the recursive generator doesn't stop at the root
+        const sourceTreeContent = generateTreeString(rootNodes, visibleTreePaths, includedRelativePaths);
 
         if (filesToProcess.length === 0) return { success: false, message: "No matching files found.", outputPath: '', files: [] };
 
