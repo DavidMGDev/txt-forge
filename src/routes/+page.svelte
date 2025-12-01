@@ -23,6 +23,8 @@
 
     // Data
 
+    let appVersion = $state("..."); // <--- Add this line
+
     let detectedIds: string[] = $state([]);
 
     let projectConfig: any = $state(null); // <--- NEW
@@ -256,6 +258,8 @@
             globalVaultPath = data.globalVaultPath;
 
             projectConfig = data.projectConfig;
+
+            appVersion = data.appVersion; // <--- Add this line
 
             isDebug = data.isDebug;
 
@@ -2373,7 +2377,7 @@
         <p
             class="text-[9px] text-slate-700 font-bold tracking-[0.3em] uppercase hover:text-orange-900 transition-colors cursor-default"
         >
-            TXT-FORGE v2.0 • Local Environment
+            TXT-FORGE v{appVersion} • Local Environment
         </p>
     </div>
 </div>

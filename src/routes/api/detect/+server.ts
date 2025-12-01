@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { detectCodebase } from '$lib/processor';
-import { loadConfig, loadProjectConfig, checkForUpdate, getCwd } from '$lib/server/sys-utils';
+import { loadConfig, loadProjectConfig, checkForUpdate, getCwd, APP_VERSION } from '$lib/server/sys-utils';
 import os from 'os';
 import path from 'path';
 
@@ -37,6 +37,7 @@ export async function GET() {
         configWasReset: wasReset,
         updateInfo,
         shouldShowUpdate,
+        appVersion: APP_VERSION, // <--- Add this line
         // DEBUG: Pass the env flag to the frontend
         isDebug: process.env.TXT_FORGE_DEBUG === 'true'
     });
