@@ -775,29 +775,21 @@
 
     function handleSelectAll() {
 
-        // Strategy: Explicitly INCLUDE every eligible file.
+        // Strategy: Revert to Default.
 
-        // We do not rely on inheritance; we brute force the state for every file we care about.
+        // The "Default State" calculated during scan (defaultIncludedPaths) ALREADY represents
 
-        const newRules: Record<string, 'include' | 'exclude'> = {};
-        
+        // "All Eligible Items Selected" (ignoring media/ignored files).
 
-        for (const [pathStr, meta] of fileTypeMap.entries()) {
+        // By clearing the rules, we revert to this state. 
 
-            // STRICT FILTER: Files only, Not Media, Not Ignored
+        // This solves two problems:
 
-            // (Note: meta.isIgnored now correctly reflects parent folders thanks to Step 1)
+        // 1. It ensures Ignored files/folders are NOT selected (since default state respects them).
 
-            if (meta.type === 'file' && !meta.isMedia && !meta.isIgnored) {
+        // 2. It ensures the "Reset" button disappears (since selectionRules becomes empty).
 
-                newRules[pathStr] = 'include';
-
-            }
-
-        }
-        
-
-        selectionRules = newRules;
+        selectionRules = {};
 
         recalculateVisualSelection();
 
@@ -807,22 +799,24 @@
 
     function handleDeselectAll() {
 
-        // Strategy: Explicitly EXCLUDE every eligible file.
+        // Strategy: Explicitly EXCLUDE everything eligible.
 
-        // Using a root rule like { '.': 'exclude' } was insufficient because it relies on rule hierarchy logic 
+        // CRITICAL FIX: We must exclude FOLDERS too. If we only exclude files, 
 
-        // which might be overridden or behave unexpectedly with specific existing rules.
+        // folders fall back to their Default State (Included), making them appear checked 
 
-        // Brute forcing 'exclude' on every eligible file guarantees the result the user wants.
+        // even if they are empty or contain only media.
 
         const newRules: Record<string, 'include' | 'exclude'> = {};
         
 
         for (const [pathStr, meta] of fileTypeMap.entries()) {
 
-            // STRICT FILTER: Only touch files we are allowed to touch
+            // Filter: Don't touch Media or Ignored items (they are already excluded by default logic)
 
-            if (meta.type === 'file' && !meta.isMedia && !meta.isIgnored) {
+            // But DO touch Folders and Files that are eligible.
+
+            if (!meta.isMedia && !meta.isIgnored) {
 
                 newRules[pathStr] = 'exclude';
 
@@ -842,11 +836,9 @@
 
     function handleInvert() {
 
-        // Strategy: Iterate every eligible file. 
+        // Strategy: Iterate everything eligible and flip state.
 
-        // If it is currently selected (in selectedFilePaths) -> Exclude it.
-
-        // If it is NOT currently selected -> Include it.
+        // CRITICAL FIX: Include FOLDERS in the inversion to ensure consistent visual state.
 
         const newRules: Record<string, 'include' | 'exclude'> = {};
 
@@ -854,9 +846,9 @@
 
         for (const [pathStr, meta] of fileTypeMap.entries()) {
 
-            // STRICT FILTER
+            // Filter: Eligible items only
 
-            if (meta.type === 'file' && !meta.isMedia && !meta.isIgnored) {
+            if (!meta.isMedia && !meta.isIgnored) {
 
                 // Check visual state (Source of truth for "current" state)
 
