@@ -133,10 +133,10 @@
             {node.isMedia
                 ? 'bg-slate-800 border-slate-800 opacity-30 cursor-not-allowed'
                 : isFullyChecked
-                  ? 'bg-emerald-600 border-emerald-500 text-white shadow-[0_0_8px_rgba(16,185,129,0.4)] hover:bg-red-500 hover:border-red-400 hover:shadow-red-500/20' // Full = Green, Hover = Red (Clear)
+                  ? 'bg-emerald-600 border-emerald-500 text-white shadow-[0_0_8px_rgba(16,185,129,0.4)] hover:bg-red-500 hover:border-red-400 hover:shadow-red-500/20'
                   : isIndeterminate
-                    ? 'bg-orange-600 border-orange-500 text-white shadow-[0_0_8px_rgba(249,115,22,0.4)] hover:bg-emerald-600 hover:border-emerald-500 hover:shadow-emerald-500/20' // Partial = Orange, Hover = Green (Force)
-                    : 'border-slate-700 bg-slate-900/50 hover:border-orange-500 hover:bg-orange-500/20'}" // Empty = Gray, Hover = Orange (Smart)
+                    ? 'bg-orange-600 border-orange-500 text-white shadow-[0_0_8px_rgba(249,115,22,0.4)] hover:bg-emerald-600 hover:border-emerald-500 hover:shadow-emerald-500/20'
+                    : 'border-slate-700 bg-slate-900/50 hover:border-orange-500 hover:bg-orange-500/20'}"
         >
             {#if isFullyChecked}
                 <!-- Checkmark -->
