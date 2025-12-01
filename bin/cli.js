@@ -55,22 +55,31 @@ if (isDebug) console.log('\x1b[33m%s\x1b[0m', '› Debug Mode Enabled');
 async function killPort(port) {
     return new Promise((resolve) => {
         const isWin = process.platform === 'win32';
+        // FIX: On Windows, strictly filter for 'LISTENING' to avoid killing the browser (ESTABLISHED connections)
         const command = isWin
-            ? `netstat -ano | findstr :${port}`
+            ? `netstat -ano | findstr :${port} | findstr LISTENING`
             : `lsof -i :${port} -t`;
+
         exec(command, (err, stdout) => {
             if (!stdout) return resolve();
             console.log('\x1b[90m%s\x1b[0m', '› Preparing local network environment...');
 
             if (isWin) {
                 const lines = stdout.trim().split('\n');
+                // It's possible multiple lines exist, kill the PID found in the first valid listener
                 const pid = lines[0].trim().split(/\s+/).pop();
-                if (pid && pid !== '0') exec(`taskkill /PID ${pid} /F`, () => setTimeout(resolve, 200));
-                else resolve();
+                if (pid && pid !== '0') {
+                    exec(`taskkill /PID ${pid} /F`, () => setTimeout(resolve, 500)); // Increased buffer to 500ms
+                } else {
+                    resolve();
+                }
             } else {
                 const pid = stdout.trim();
-                if (pid) exec(`kill -9 ${pid}`, () => setTimeout(resolve, 200));
-                else resolve();
+                if (pid) {
+                    exec(`kill -9 ${pid}`, () => setTimeout(resolve, 500)); // Increased buffer to 500ms
+                } else {
+                    resolve();
+                }
             }
         });
     });
@@ -98,10 +107,23 @@ async function startServer() {
         stdio: stdioConfig
     });
 
+    // FIX: Detect if server crashes immediately (e.g., EADDRINUSE)
+    let serverExited = false;
+    server.on('exit', (code) => {
+        serverExited = true;
+        if (code !== 0 && code !== null) {
+            console.error('\x1b[31m%s\x1b[0m', `✕ Server failed to start (Exit Code: ${code}). Port might be locked.`);
+            process.exit(code);
+        }
+    });
+
     const url = `http://localhost:${PORT}`;
 
     // Wait for server to start
     setTimeout(async () => {
+        // FIX: Don't open browser if server died
+        if (serverExited) return;
+
         if (isAuto) {
             // --- AUTO MODE LOGIC ---
             try {
